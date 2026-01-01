@@ -40,6 +40,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     // --- 4. AUTH CHECK & ROUTING ---
+    // Only check auth if we are NOT on the login page
     if (!loginBtn && window.location.pathname.indexOf('index.html') === -1) {
         checkAuth();
     }
@@ -59,8 +60,9 @@ document.addEventListener("DOMContentLoaded", function() {
         if (profile) {
             currentProfile = profile;
             updateUserUI(profile);
-            loadDashboard(); // Load data only after auth confirmed
+            loadDashboard(); // Only load dashboard data after we have the user
         } else {
+            // If logged in but no profile, go to register
             if (window.location.pathname.indexOf('register.html') === -1) {
                 window.location.href = 'register.html';
             }
@@ -88,11 +90,12 @@ document.addEventListener("DOMContentLoaded", function() {
         if (reportBtn) {
             reportBtn.addEventListener('click', () => {
                 document.getElementById('report-modal').classList.add('active');
+                // Reset Map vars
                 selectedLat = null;
                 selectedLng = null;
                 if (pickerMarker && pickerMap) pickerMap.removeLayer(pickerMarker);
                 document.getElementById('picker-status').innerText = "Click map to select location";
-                setTimeout(initPickerMap, 200); // Small delay to fix map size
+                setTimeout(initPickerMap, 200); 
             });
         }
 
@@ -133,7 +136,7 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!pickerEl) return;
 
         if (!pickerMap) {
-            pickerMap = L.map('map-picker').setView([7.116, 124.835], 16); // Kabacan
+            pickerMap = L.map('map-picker').setView([7.116, 124.835], 16); // Kabacan Coordinates
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(pickerMap);
 
             pickerMap.on('click', function(e) {
@@ -176,33 +179,49 @@ document.addEventListener("DOMContentLoaded", function() {
         setTimeout(() => { viewerMap.invalidateSize(); }, 200);
     }
 
-    // --- 7. FETCH ITEMS (CRITICAL FIX HERE) ---
+    // --- 7. FETCH ITEMS (FIXED: Manual Join to avoid Relation Error) ---
     async function fetchItems(filterType = 'ALL', searchQuery = '') {
         const container = document.getElementById('items-container');
         if (!container) return;
         
         container.innerHTML = '<div style="grid-column:span 3; text-align:center;">Loading...</div>';
 
-        // FIX: selecting correct columns including profiles
-        let query = supabase.from('items')
-            .select(`*, profiles(full_name, avatar_url)`)
-            .order('created_at', { ascending: false });
+        // 1. Fetch Items ONLY (No Join yet)
+        let query = supabase.from('items').select('*').order('created_at', { ascending: false });
 
         if (filterType !== 'ALL') {
             query = query.eq('type', filterType);
         }
         if (searchQuery) {
-            // FIX: Using 'item_name' instead of 'name'
-            query = query.ilike('item_name', `%${searchQuery}%`);
+            query = query.ilike('item_name', `%${searchQuery}%`); // Correct column: item_name
         }
 
         const { data: items, error } = await query;
+        
         if (error) {
             console.error("Fetch Error:", error);
-            // This is where "Error Loading Items" came from. Now it logs the real error to console.
             container.innerHTML = `<p style="color:red; grid-column:span 3; text-align:center;">Error: ${error.message}</p>`;
             return;
         }
+
+        if (!items || items.length === 0) {
+            container.innerHTML = '<p style="grid-column:span 3; text-align:center; color:#888;">No items found.</p>';
+            return;
+        }
+
+        // 2. Manual Fetch for User Profiles (Bypasses Schema Error)
+        const userIds = [...new Set(items.map(i => i.user_id))];
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', userIds);
+        
+        const profileMap = {};
+        if (profiles) {
+            profiles.forEach(p => profileMap[p.id] = p);
+        }
+
+        // 3. Attach Profiles to Items in Javascript
+        items.forEach(item => {
+            item.profiles = profileMap[item.user_id] || { full_name: 'Unknown User', avatar_url: null };
+        });
 
         renderItems(items);
     }
@@ -211,11 +230,6 @@ document.addEventListener("DOMContentLoaded", function() {
         const container = document.getElementById('items-container');
         container.innerHTML = '';
 
-        if (items.length === 0) {
-            container.innerHTML = '<p style="grid-column:span 3; text-align:center; color:#888;">No items found.</p>';
-            return;
-        }
-
         items.forEach(item => {
             const card = document.createElement('div');
             card.className = 'item-card';
@@ -223,7 +237,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
             const imgUrl = item.image_url || 'https://via.placeholder.com/400x300?text=No+Image';
             const badgeClass = item.type === 'LOST' ? 'LOST' : 'FOUND';
-            // FIX: Using item_name and date_incident
             const dateStr = item.date_incident || new Date(item.created_at).toLocaleDateString();
 
             card.innerHTML = `
@@ -264,7 +277,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     imageUrl = data.publicUrl;
                 }
 
-                // FIX: Inserting into correct columns (item_name, latitude, longitude)
+                // Insert into correct columns
                 const { error } = await supabase.from('items').insert({
                     user_id: currentUser.id,
                     type: document.querySelector('input[name="type"]:checked').value,
@@ -300,7 +313,7 @@ document.addEventListener("DOMContentLoaded", function() {
     function openDetailModal(item) {
         document.getElementById('detail-img').src = item.image_url || 'https://via.placeholder.com/400x300';
         
-        // Lightbox
+        // Zoom functionality
         const imgEl = document.getElementById('detail-img');
         imgEl.style.cursor = 'zoom-in';
         imgEl.onclick = function() {
@@ -315,14 +328,16 @@ document.addEventListener("DOMContentLoaded", function() {
         typeSpan.innerText = item.type;
         typeSpan.className = `detail-type ${item.type === 'LOST' ? 'tag LOST' : 'tag FOUND'}`;
         
-        // FIX: Using correct fields
         document.getElementById('detail-title').innerText = item.item_name;
         document.getElementById('detail-date').innerText = item.date_incident;
         document.getElementById('detail-location').innerText = item.location;
         document.getElementById('detail-desc').innerText = item.description || "No description.";
         
+        // Profile safe check
         if (item.profiles) {
             document.getElementById('detail-user').innerText = item.profiles.full_name;
+        } else {
+             document.getElementById('detail-user').innerText = "Unknown";
         }
 
         // Show Map
@@ -430,17 +445,25 @@ document.addEventListener("DOMContentLoaded", function() {
             await supabase.from('notifications').update({ is_read: true }).eq('user_id', currentUser.id);
             document.getElementById('notif-badge').style.display = 'none';
 
-            const { data: notifs } = await supabase.from('notifications').select(`*, sender:profiles!sender_id(full_name)`).eq('user_id', currentUser.id).order('created_at', { ascending: false });
+            // Manual Join for Notifications too
+            const { data: notifs } = await supabase.from('notifications').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
             
             list.innerHTML = '';
             if (!notifs || notifs.length === 0) {
                 list.innerHTML = '<p style="padding:20px; text-align:center; color:#888;">No notifications.</p>';
             } else {
+                // Fetch sender names
+                const senderIds = [...new Set(notifs.map(n => n.sender_id))];
+                const { data: senders } = await supabase.from('profiles').select('id, full_name').in('id', senderIds);
+                const senderMap = {};
+                senders?.forEach(s => senderMap[s.id] = s);
+
                 notifs.forEach(n => {
+                    const senderName = senderMap[n.sender_id]?.full_name || 'Someone';
                     const div = document.createElement('div');
                     div.className = 'notif-item';
                     div.innerHTML = `
-                        <div class="notif-msg"><b>${n.sender?.full_name || 'Someone'}</b>: ${n.message}</div>
+                        <div class="notif-msg"><b>${senderName}</b>: ${n.message}</div>
                         <div class="notif-time">${new Date(n.created_at).toLocaleString()}</div>
                     `;
                     list.appendChild(div);
