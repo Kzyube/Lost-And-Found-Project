@@ -1,4 +1,4 @@
-/* style.css - UPDATED FOR MOBILE RESPONSIVENESS */
+/* style.css - FULLY UPDATED WITH MAP SUPPORT */
 
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 
@@ -16,6 +16,17 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; outline: none; -webkit-tap-highlight-color: transparent; }
 body { font-family: 'Poppins', sans-serif; color: var(--text-main); overflow-x: hidden; }
+
+/* --- MAP STYLES (NEW) --- */
+.map-style {
+    height: 250px;
+    width: 100%;
+    border-radius: 12px;
+    border: 2px solid #eee;
+    z-index: 1; /* Keeps map below modal overlays */
+    margin-bottom: 5px;
+    background: #e0e0e0; /* Loading placeholder */
+}
 
 /* LOGIN STYLES */
 body.login-page {
@@ -127,7 +138,7 @@ body.dashboard-body { background-color: var(--bg-color); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 .form-group.full { grid-column: span 2; }
 .form-group label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; color: var(--text-main); }
-.form-group input, .form-group textarea { width: 100%; padding: 12px; border: 2px solid #eee; border-radius: 10px; font-family: inherit; transition: 0.3s; font-size: 16px; /* Prevents iOS zoom */ }
+.form-group input, .form-group textarea { width: 100%; padding: 12px; border: 2px solid #eee; border-radius: 10px; font-family: inherit; transition: 0.3s; font-size: 16px; }
 .btn-submit { width: 100%; padding: 15px; background: var(--usm-green); color: white; border: none; border-radius: 12px; font-weight: 600; margin-top: 25px; cursor: pointer; transition: 0.3s; }
 .btn-facebook { background: var(--facebook); color: white; width: 100%; padding: 12px; border-radius: 8px; font-weight: 600; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; transition: 0.3s; }
 .btn-facebook:hover { background: #155db5; }

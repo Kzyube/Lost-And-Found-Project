@@ -6,6 +6,10 @@
     <title>USM FindItFast - Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -26,178 +30,171 @@
             </ul>
 
             <div class="user-footer">
-                <img src="https://via.placeholder.com/40" id="nav-avatar" class="nav-avatar">
+                <img src="https://via.placeholder.com/40" class="nav-avatar" id="nav-avatar">
                 <div class="user-info">
                     <h4 id="nav-name">Loading...</h4>
-                    <small>Online</small>
+                    <small id="nav-role">...</small>
                 </div>
                 <div class="footer-actions">
-                    <button id="settings-btn" onclick="openProfileSettings()"><i class="ri-settings-3-line"></i></button>
                     <button id="logout-btn"><i class="ri-logout-box-r-line"></i></button>
                 </div>
             </div>
         </nav>
 
         <main class="main-content">
-            <header class="top-bar">
+            <div class="top-bar">
                 <div class="welcome-text">
-                    <h1>Overview</h1>
-                    <p>Track lost and found items in real-time.</p>
+                    <h1>Welcome, <span id="user-first-name">Student</span>! 👋</h1>
+                    <p>What are we finding today?</p>
                 </div>
                 <div class="top-actions">
                     <div class="search-box">
                         <i class="ri-search-line"></i>
-                        <input type="text" id="search-input" placeholder="Search tags, name, location...">
+                        <input type="text" id="search-input" placeholder="Search items...">
                     </div>
-                    <button class="btn-primary" onclick="openModal('LOST')"><i class="ri-add-line"></i> Report Lost</button>
-                    <button class="btn-secondary" onclick="openModal('FOUND')"><i class="ri-hand-heart-line"></i> I Found It</button>
+                    <button class="btn-primary" id="report-btn">
+                        <i class="ri-add-circle-line"></i> Report Item
+                    </button>
                 </div>
-            </header>
+            </div>
 
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="icon-box red"><i class="ri-search-2-line"></i></div>
-                    <div><h3 id="count-lost">--</h3><p>Active Lost Reports</p></div>
+                    <div class="icon-box red"><i class="ri-emotion-unhappy-line"></i></div>
+                    <div>
+                        <h3>Lost Items</h3>
+                        <h2 id="count-lost">0</h2>
+                    </div>
                 </div>
                 <div class="stat-card">
-                    <div class="icon-box green"><i class="ri-hand-heart-line"></i></div>
-                    <div><h3 id="count-found">--</h3><p>Active Found Reports</p></div>
+                    <div class="icon-box green"><i class="ri-emotion-happy-line"></i></div>
+                    <div>
+                        <h3>Found Items</h3>
+                        <h2 id="count-found">0</h2>
+                    </div>
                 </div>
             </div>
 
-            <div class="feed-section">
-                <div class="feed-header">
-                    <h3>Recent Activity</h3>
-                    <div class="tabs">
-                        <button class="tab active" data-tab="all">All</button>
-                        <button class="tab" data-tab="lost">Lost</button>
-                        <button class="tab" data-tab="found">Found</button>
-                    </div>
-                </div>
-                <div class="items-grid" id="feed-container">
-                    <div class="loading-state">Loading items...</div>
+            <div class="feed-header">
+                <h3>Recent Posts</h3>
+                <div class="tabs">
+                    <button class="tab active" data-tab="ALL">All</button>
+                    <button class="tab" data-tab="LOST">Lost</button>
+                    <button class="tab" data-tab="FOUND">Found</button>
                 </div>
             </div>
+
+            <div class="items-grid" id="items-container">
+                </div>
         </main>
     </div>
 
     <div class="modal-overlay" id="report-modal">
         <div class="modal-box">
-            <div class="modal-header">
-                <h2 id="modal-title">Report Item</h2>
+            <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2>Report an Item</h2>
                 <button class="close-btn" onclick="closeModal('report-modal')"><i class="ri-close-line"></i></button>
             </div>
+            
             <form id="report-form">
-                <input type="hidden" id="post-type" value="LOST">
-                <input type="hidden" id="edit-item-id" value=""> 
-                <input type="hidden" id="existing-image-url" value=""> 
-
                 <div class="form-grid">
-                    <div class="form-group full"><label>Item Name</label><input type="text" id="item-title" required></div>
-                    <div class="form-group"><label>Location</label><input type="text" id="item-location" required></div>
-                    <div class="form-group"><label>Date</label><input type="date" id="item-date" required></div>
-                    <div class="form-group full"><label>Tags (Comma separated)</label><input type="text" id="item-tags" placeholder="laptop, black, acer"></div>
                     <div class="form-group full">
-                        <label>Photo <small id="photo-label-extra" style="color:#888; font-weight:normal;"></small></label>
-                        <input type="file" id="item-image" accept="image/*">
+                        <label>Type</label>
+                        <div style="display:flex; gap:10px;">
+                            <label style="cursor:pointer;"><input type="radio" name="type" value="LOST" checked> Lost</label>
+                            <label style="cursor:pointer;"><input type="radio" name="type" value="FOUND"> Found</label>
+                        </div>
                     </div>
-                    <div class="form-group full"><label>Description</label><textarea id="item-desc" rows="3"></textarea></div>
+
+                    <div class="form-group">
+                        <label>Item Name</label>
+                        <input type="text" id="item-name" required placeholder="e.g. Blue Wallet">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="item-date" required>
+                    </div>
+
+                    <div class="form-group full">
+                        <label>Location (Description)</label>
+                        <input type="text" id="item-location" required placeholder="e.g. Near Library Entrance">
+                    </div>
+
+                    <div class="form-group full">
+                        <label>📍 Pin Location on Map (Kabacan)</label>
+                        <div id="map-picker" class="map-style"></div>
+                        <small id="picker-status" style="color:#666; font-size:0.8rem;">Click the map to pin location</small>
+                    </div>
+
+                    <div class="form-group full">
+                        <label>Description (Tags)</label>
+                        <textarea id="item-desc" rows="3" placeholder="Describe distinct features..."></textarea>
+                    </div>
+
+                    <div class="form-group full">
+                        <label>Photo</label>
+                        <input type="file" id="item-photo" accept="image/*">
+                    </div>
                 </div>
-                <button type="submit" class="btn-submit" id="form-submit-btn">Submit Report</button>
+                <button type="submit" class="btn-submit">Post Item</button>
             </form>
         </div>
     </div>
 
     <div class="modal-overlay" id="detail-modal">
-        <div class="modal-box detail-box">
-            <button class="close-btn-abs" onclick="closeModal('detail-modal')"><i class="ri-close-line"></i></button>
-            <div class="detail-img-box"><img id="detail-img" src="" alt="Item Image"></div>
+        <button class="close-btn-abs" onclick="closeModal('detail-modal')"><i class="ri-close-line"></i></button>
+        <div class="detail-box">
+            <div class="detail-img-box">
+                <img id="detail-img" src="">
+            </div>
             <div class="detail-info">
-                <span id="detail-type" class="detail-type">TYPE</span>
-                <h2 id="detail-title" class="detail-h2">Item Title</h2>
-                <div class="detail-meta">
-                    <span><i class="ri-map-pin-line"></i> <b id="detail-location">Location</b></span>
-                    <span><i class="ri-calendar-line"></i> <b id="detail-date">Date</b></span>
+                <div>
+                    <span id="detail-type" class="detail-type">LOST</span>
+                    <h2 id="detail-title" class="detail-h2">Item Name</h2>
+                    
+                    <div class="detail-meta">
+                        <span><i class="ri-calendar-line"></i> <span id="detail-date"></span></span>
+                        <span><i class="ri-map-pin-line"></i> <span id="detail-location"></span></span>
+                        <span><i class="ri-user-3-line"></i> Posted by <span id="detail-user"></span></span>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="font-weight:600; font-size:0.85rem; display:block; margin-bottom:5px;">📍 Map Location</label>
+                        <div id="map-viewer" class="map-style"></div>
+                    </div>
+
+                    <div id="detail-desc" class="detail-desc">
+                        Description here...
+                    </div>
                 </div>
-                <div class="tags-row" id="detail-tags"></div>
-                <p id="detail-desc" class="detail-desc">Description goes here...</p>
-                <div class="detail-actions" id="detail-actions"></div>
+
+                <div class="detail-actions">
+                    <button class="btn-facebook" id="contact-btn">
+                        <i class="ri-chat-3-line"></i> Contact Uploader
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="modal-overlay" id="notif-modal">
-        <div class="modal-box" style="max-width: 450px;">
-            <div class="modal-header">
+        <div class="modal-box" style="max-width: 400px;">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:15px;">
                 <h2>Notifications</h2>
                 <button class="close-btn" onclick="closeModal('notif-modal')"><i class="ri-close-line"></i></button>
             </div>
-            <div id="notif-list" class="notif-list"><p>No new notifications.</p></div>
-        </div>
-    </div>
-
-    <div class="modal-overlay" id="user-profile-modal">
-        <div class="modal-box center-text" style="max-width: 380px;">
-            <button class="close-btn-abs" onclick="closeModal('user-profile-modal')"><i class="ri-close-line"></i></button>
-            
-            <div class="profile-header">
-                <img id="popup-avatar" src="https://via.placeholder.com/100" class="popup-avatar">
-                <h3 id="popup-name">User Name</h3>
-                <span id="popup-role" class="popup-role">Student</span>
-            </div>
-
-            <div class="profile-details">
-                <div class="p-row">
-                    <i class="ri-id-card-line"></i>
-                    <span id="popup-id">ID: 123456</span>
+            <div class="notif-list" id="notif-list">
                 </div>
-                <div class="p-row">
-                    <i class="ri-map-pin-user-line"></i>
-                    <span id="popup-address">Kabacan, North Cotabato</span>
-                </div>
-            </div>
-
-            <a id="popup-fb" href="#" target="_blank" class="btn-facebook" style="margin-top:20px;">
-                <i class="ri-facebook-circle-fill"></i> Open Facebook Profile
-            </a>
-        </div>
-    </div>
-
-    <div class="modal-overlay" id="settings-modal">
-        <div class="modal-box" style="max-width: 450px;">
-            <div class="modal-header">
-                <h2>My Profile Settings</h2>
-                <button class="close-btn" onclick="closeModal('settings-modal')"><i class="ri-close-line"></i></button>
-            </div>
-            <form id="settings-form">
-                <div class="form-group full">
-                    <label>Full Name</label>
-                    <input type="text" id="set-name" required>
-                </div>
-                <div class="form-group full">
-                    <label>Student ID Number</label>
-                    <input type="text" id="set-id" placeholder="e.g. 2023-1234">
-                </div>
-                <div class="form-group full">
-                    <label>Address / Department</label>
-                    <input type="text" id="set-address" placeholder="e.g. College of Computing">
-                </div>
-                <div class="form-group full">
-                    <label>Facebook Profile Link</label>
-                    <input type="url" id="set-fb" placeholder="https://facebook.com/username">
-                    <small style="color:#666; font-size:0.75rem;">Important: This helps people contact you.</small>
-                </div>
-                <button type="submit" class="btn-submit">Save Changes</button>
-            </form>
         </div>
     </div>
 
     <div class="modal-overlay" id="custom-alert">
         <div class="modal-box center-text" style="max-width: 350px;">
-            <div class="icon-circle" id="alert-icon"><i class="ri-information-line"></i></div>
-            <h3 id="alert-title">Notice</h3>
-            <p id="alert-msg">Message goes here.</p>
-            <button class="btn-primary full-width" onclick="closeModal('custom-alert')">OK</button>
+            <div class="icon-circle"><i class="ri-information-line"></i></div>
+            <h3 id="alert-title">Alert</h3>
+            <p id="alert-msg">Message goes here</p>
+            <button class="btn-submit" style="margin-top:20px;" onclick="closeModal('custom-alert')">OK</button>
         </div>
     </div>
 
