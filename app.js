@@ -40,7 +40,6 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     // --- 4. AUTH CHECK & ROUTING ---
-    // If we are NOT on index.html, check auth immediately
     if (!loginBtn && window.location.pathname.indexOf('index.html') === -1) {
         checkAuth();
     }
@@ -60,11 +59,8 @@ document.addEventListener("DOMContentLoaded", function() {
         if (profile) {
             currentProfile = profile;
             updateUserUI(profile);
-            
-            // LOAD DASHBOARD LOGIC ONLY IF LOGGED IN
-            loadDashboard();
+            loadDashboard(); // Load data only after auth confirmed
         } else {
-            // If no profile, go to register
             if (window.location.pathname.indexOf('register.html') === -1) {
                 window.location.href = 'register.html';
             }
@@ -72,7 +68,6 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function updateUserUI(profile) {
-        // Safe check for elements before trying to update them
         if(document.getElementById('nav-name')) document.getElementById('nav-name').innerText = profile.full_name;
         if(document.getElementById('nav-role')) document.getElementById('nav-role').innerText = (profile.role || 'Student').toUpperCase();
         if(document.getElementById('user-first-name')) document.getElementById('user-first-name').innerText = profile.full_name.split(' ')[0];
@@ -83,28 +78,25 @@ document.addEventListener("DOMContentLoaded", function() {
     function loadDashboard() {
         console.log("Loading Dashboard...");
         
-        // Load Data
         fetchItems('ALL');
         updateStats();
         setupRealtime();
         checkNotifications();
 
-        // A. Setup Report Button
+        // Setup Report Button
         const reportBtn = document.getElementById('report-btn');
         if (reportBtn) {
             reportBtn.addEventListener('click', () => {
                 document.getElementById('report-modal').classList.add('active');
-                // Reset Map vars
                 selectedLat = null;
                 selectedLng = null;
                 if (pickerMarker && pickerMap) pickerMap.removeLayer(pickerMarker);
-                
-                // Initialize Map (Delay slightly to ensure modal is visible)
-                setTimeout(initPickerMap, 100);
+                document.getElementById('picker-status').innerText = "Click map to select location";
+                setTimeout(initPickerMap, 200); // Small delay to fix map size
             });
         }
 
-        // B. Setup Search
+        // Setup Search
         const searchInput = document.getElementById('search-input');
         if(searchInput) {
             let timer;
@@ -118,14 +110,14 @@ document.addEventListener("DOMContentLoaded", function() {
             });
         }
 
-        // C. Setup Tabs
+        // Setup Tabs
         document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', (e) => {
             document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
             e.target.classList.add('active');
             fetchItems(e.target.dataset.tab.toUpperCase(), searchInput ? searchInput.value : '');
         }));
 
-        // D. Logout
+        // Logout
         const logoutBtn = document.getElementById('logout-btn');
         if(logoutBtn) {
             logoutBtn.addEventListener('click', async () => {
@@ -184,14 +176,14 @@ document.addEventListener("DOMContentLoaded", function() {
         setTimeout(() => { viewerMap.invalidateSize(); }, 200);
     }
 
-    // --- 7. FETCH ITEMS (Fixed Columns) ---
+    // --- 7. FETCH ITEMS (CRITICAL FIX HERE) ---
     async function fetchItems(filterType = 'ALL', searchQuery = '') {
         const container = document.getElementById('items-container');
         if (!container) return;
         
         container.innerHTML = '<div style="grid-column:span 3; text-align:center;">Loading...</div>';
 
-        // FIXED: Using correct column names (item_name, date_incident, etc.)
+        // FIX: selecting correct columns including profiles
         let query = supabase.from('items')
             .select(`*, profiles(full_name, avatar_url)`)
             .order('created_at', { ascending: false });
@@ -200,14 +192,15 @@ document.addEventListener("DOMContentLoaded", function() {
             query = query.eq('type', filterType);
         }
         if (searchQuery) {
-            // FIXED: Using 'item_name' not 'name'
+            // FIX: Using 'item_name' instead of 'name'
             query = query.ilike('item_name', `%${searchQuery}%`);
         }
 
         const { data: items, error } = await query;
         if (error) {
             console.error("Fetch Error:", error);
-            container.innerHTML = '<p style="color:red; grid-column:span 3; text-align:center;">Error loading items.</p>';
+            // This is where "Error Loading Items" came from. Now it logs the real error to console.
+            container.innerHTML = `<p style="color:red; grid-column:span 3; text-align:center;">Error: ${error.message}</p>`;
             return;
         }
 
@@ -230,15 +223,16 @@ document.addEventListener("DOMContentLoaded", function() {
 
             const imgUrl = item.image_url || 'https://via.placeholder.com/400x300?text=No+Image';
             const badgeClass = item.type === 'LOST' ? 'LOST' : 'FOUND';
+            // FIX: Using item_name and date_incident
+            const dateStr = item.date_incident || new Date(item.created_at).toLocaleDateString();
 
-            // FIXED: Using correct fields (date_incident, location, item_name)
             card.innerHTML = `
                 <img src="${imgUrl}" class="card-img" loading="lazy">
                 <div class="card-body">
                     <span class="tag ${badgeClass}">${item.type}</span>
-                    <h3 class="card-title">${item.item_name}</h3>
-                    <div class="card-meta"><i class="ri-calendar-line"></i> ${item.date_incident || 'Unknown Date'}</div>
-                    <div class="card-meta"><i class="ri-map-pin-line"></i> ${item.location || 'Unknown Loc'}</div>
+                    <h3 class="card-title">${item.item_name}</h3> 
+                    <div class="card-meta"><i class="ri-calendar-line"></i> ${dateStr}</div>
+                    <div class="card-meta"><i class="ri-map-pin-line"></i> ${item.location || 'Unknown'}</div>
                     <div class="card-meta" style="margin-top:10px;">
                         <span class="mini-tag">${item.status}</span>
                     </div>
@@ -248,7 +242,7 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    // --- 8. REPORT FORM SUBMIT (Fixed Columns) ---
+    // --- 8. REPORT FORM SUBMIT ---
     const reportForm = document.getElementById('report-form');
     if (reportForm) {
         reportForm.addEventListener('submit', async (e) => {
@@ -270,7 +264,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     imageUrl = data.publicUrl;
                 }
 
-                // FIXED: Insert using correct column names
+                // FIX: Inserting into correct columns (item_name, latitude, longitude)
                 const { error } = await supabase.from('items').insert({
                     user_id: currentUser.id,
                     type: document.querySelector('input[name="type"]:checked').value,
@@ -280,8 +274,8 @@ document.addEventListener("DOMContentLoaded", function() {
                     description: document.getElementById('item-desc').value,
                     image_url: imageUrl,
                     status: 'OPEN',
-                    latitude: selectedLat,  // Correct column
-                    longitude: selectedLng  // Correct column
+                    latitude: selectedLat,
+                    longitude: selectedLng
                 });
 
                 if (error) throw error;
@@ -306,7 +300,7 @@ document.addEventListener("DOMContentLoaded", function() {
     function openDetailModal(item) {
         document.getElementById('detail-img').src = item.image_url || 'https://via.placeholder.com/400x300';
         
-        // Zoom
+        // Lightbox
         const imgEl = document.getElementById('detail-img');
         imgEl.style.cursor = 'zoom-in';
         imgEl.onclick = function() {
@@ -321,10 +315,11 @@ document.addEventListener("DOMContentLoaded", function() {
         typeSpan.innerText = item.type;
         typeSpan.className = `detail-type ${item.type === 'LOST' ? 'tag LOST' : 'tag FOUND'}`;
         
+        // FIX: Using correct fields
         document.getElementById('detail-title').innerText = item.item_name;
         document.getElementById('detail-date').innerText = item.date_incident;
         document.getElementById('detail-location').innerText = item.location;
-        document.getElementById('detail-desc').innerText = item.description;
+        document.getElementById('detail-desc').innerText = item.description || "No description.";
         
         if (item.profiles) {
             document.getElementById('detail-user').innerText = item.profiles.full_name;
@@ -356,6 +351,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 document.getElementById('detail-modal').classList.remove('active');
                 fetchItems();
                 updateStats();
+            } else {
+                window.showAlert("Error", error.message);
             }
         });
     }
@@ -383,6 +380,8 @@ document.addEventListener("DOMContentLoaded", function() {
             if(!error) {
                 window.showAlert("Sent", "Message sent!");
                 document.getElementById('message-modal').classList.remove('active');
+            } else {
+                window.showAlert("Error", error.message);
             }
         });
     }

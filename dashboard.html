@@ -117,18 +117,18 @@
                     </div>
 
                     <div class="form-group full">
-                        <label>Location (Description)</label>
-                        <input type="text" id="item-location" required placeholder="e.g. Near Library Entrance">
+                        <label>Location (Text)</label>
+                        <input type="text" id="item-location" required placeholder="e.g. Near Library">
                     </div>
 
                     <div class="form-group full">
-                        <label>📍 Pin Location on Map (Kabacan)</label>
+                        <label>📍 Pin Location on Map</label>
                         <div id="map-picker" class="map-style"></div>
-                        <small id="picker-status" style="color:#666; font-size:0.8rem;">Click the map to pin location</small>
+                        <small id="picker-status" style="color:#666;">Click map to select</small>
                     </div>
 
                     <div class="form-group full">
-                        <label>Description (Tags)</label>
+                        <label>Description</label>
                         <textarea id="item-desc" rows="3" placeholder="Describe distinct features..."></textarea>
                     </div>
 
@@ -193,7 +193,7 @@
         <div class="modal-box center-text" style="max-width: 350px;">
             <div class="icon-circle"><i class="ri-information-line"></i></div>
             <h3 id="alert-title">Alert</h3>
-            <p id="alert-msg">Message goes here</p>
+            <p id="alert-msg">Message</p>
             <button class="btn-submit" style="margin-top:20px;" onclick="closeModal('custom-alert')">OK</button>
         </div>
     </div>
@@ -202,31 +202,28 @@
         <div class="modal-box center-text" style="max-width: 350px;">
             <div class="icon-circle warn"><i class="ri-question-mark"></i></div>
             <h3>Are you sure?</h3>
-            <p id="confirm-msg">Do you really want to do this?</p>
+            <p id="confirm-msg">Confirm?</p>
             <div class="action-row">
                 <button class="btn-secondary" onclick="closeModal('custom-confirm')">Cancel</button>
-                <button class="btn-primary" id="confirm-yes-btn">Yes, I'm Sure</button>
+                <button class="btn-primary" id="confirm-yes-btn">Yes</button>
             </div>
         </div>
+    </div>
+
+    <div id="lightbox-modal" class="modal-overlay" onclick="this.classList.remove('active')">
+        <span style="position:absolute; top:20px; right:20px; color:white; font-size:2rem; cursor:pointer;">&times;</span>
+        <img id="lightbox-img" src="" style="max-width:90%; max-height:90%; border-radius:10px;">
     </div>
 
     <div class="modal-overlay" id="message-modal">
         <div class="modal-box" style="max-width: 400px;">
             <div class="modal-header">
-                <h2>Contact Uploader</h2>
+                <h2>Contact User</h2>
                 <button class="close-btn" onclick="closeModal('message-modal')"><i class="ri-close-line"></i></button>
             </div>
-            <p style="margin-bottom:15px; font-size:0.9rem; color:#666;">
-                Verify that you found/own this item. This message will be sent to the user.
-            </p>
-            <textarea id="message-input" rows="4" style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;" placeholder="Hi! I think I found your item at..."></textarea>
-            <button class="btn-submit" id="send-msg-btn">Send Message</button>
+            <textarea id="message-input" rows="4" style="width:100%; padding:10px; margin:15px 0; border:1px solid #ddd;" placeholder="Type message..."></textarea>
+            <button class="btn-submit" id="send-msg-btn">Send</button>
         </div>
-    </div>
-
-    <div id="lightbox-modal" class="modal-overlay" onclick="this.classList.remove('active')">
-        <span style="position:absolute; top:20px; right:20px; color:white; font-size:2rem;">&times;</span>
-        <img id="lightbox-img" src="" style="max-width:90%; max-height:90%; border-radius:10px; box-shadow:0 0 20px black;">
     </div>
 
     <script src="app.js"></script>
