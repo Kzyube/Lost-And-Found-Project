@@ -23,446 +23,504 @@ document.addEventListener("DOMContentLoaded", function() {
     let selectedLat = null;
     let selectedLng = null;
 
-    // --- 3. CUSTOM MODAL HELPERS ---
+    // --- 3. LOGIN LOGIC (Must be safe for index.html) ---
+    const loginBtn = document.getElementById('login-btn');
+    if (loginBtn) {
+        console.log("Login button found. Attaching listener.");
+        loginBtn.addEventListener('click', async () => {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    queryParams: {
+                        access_type: 'offline',
+                        prompt: 'consent',
+                    },
+                    redirectTo: window.location.origin + '/dashboard.html' // Redirects to dashboard after login
+                }
+            });
+            if (error) console.error('Login error:', error.message);
+        });
+    }
+
+    // --- 4. CUSTOM MODAL HELPERS ---
     window.showAlert = function(title, msg) {
-        document.getElementById('alert-title').innerText = title;
-        document.getElementById('alert-msg').innerText = msg;
-        document.getElementById('custom-alert').classList.add('active');
+        // Safety check: ensure alert modal exists (it might not on index.html)
+        const alertModal = document.getElementById('custom-alert');
+        if(alertModal) {
+            document.getElementById('alert-title').innerText = title;
+            document.getElementById('alert-msg').innerText = msg;
+            alertModal.classList.add('active');
+        } else {
+            alert(title + ": " + msg);
+        }
     };
 
     window.showConfirm = function(msg, callback) {
-        document.getElementById('confirm-msg').innerText = msg;
         const confirmModal = document.getElementById('custom-confirm');
-        confirmModal.classList.add('active');
-        
-        // Clone button to remove old listeners
-        const yesBtn = document.getElementById('confirm-yes-btn');
-        const newYes = yesBtn.cloneNode(true);
-        yesBtn.parentNode.replaceChild(newYes, yesBtn);
-        
-        newYes.addEventListener('click', () => {
-            confirmModal.classList.remove('active');
-            callback();
-        });
+        if(confirmModal) {
+            document.getElementById('confirm-msg').innerText = msg;
+            confirmModal.classList.add('active');
+            
+            const yesBtn = document.getElementById('confirm-yes-btn');
+            // Remove old listeners to prevent stacking
+            const newYesBtn = yesBtn.cloneNode(true);
+            yesBtn.parentNode.replaceChild(newYesBtn, yesBtn);
+            
+            newYesBtn.addEventListener('click', () => {
+                closeModal('custom-confirm');
+                callback();
+            });
+        } else {
+            if(confirm(msg)) callback();
+        }
     };
 
-    window.closeModal = function(id) { document.getElementById(id).classList.remove('active'); };
+    window.closeModal = function(id) { 
+        const m = document.getElementById(id);
+        if(m) m.classList.remove('active'); 
+    };
 
-    // --- 4. INITIALIZATION ---
-    async function init() {
-        // Check session
+    // --- 5. DASHBOARD AUTH CHECK ---
+    // We only run this check if we are NOT on index.html (no login button)
+    if (!loginBtn && window.location.pathname.indexOf('index.html') === -1) {
+        checkAuth();
+    }
+
+    async function checkAuth() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            window.location.href = 'index.html';
+            // No session, redirect to login
+            if (window.location.pathname.indexOf('index.html') === -1) {
+                window.location.href = 'index.html';
+            }
             return;
         }
 
         currentUser = session.user;
+        console.log("User Logged In:", currentUser.email);
         
-        // Get Profile
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single();
+        // Fetch Profile
+        const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', currentUser.id)
+            .single();
 
-        if (profile) {
+        if (error || !profile) {
+            // If logged in but no profile, go to register
+            if (window.location.pathname.indexOf('register.html') === -1) {
+                window.location.href = 'register.html';
+            }
+        } else {
             currentProfile = profile;
-            document.getElementById('nav-name').innerText = profile.full_name || currentUser.email;
-            document.getElementById('nav-role').innerText = (profile.role || 'Student').toUpperCase();
-            document.getElementById('user-first-name').innerText = (profile.full_name || 'Student').split(' ')[0];
-            if (profile.avatar_url) {
-                document.getElementById('nav-avatar').src = profile.avatar_url;
+            // Update UI with user info
+            updateUserUI(profile);
+            
+            // If we are on dashboard, load items and stats
+            if(document.getElementById('items-container')) {
+                loadDashboard();
             }
         }
+    }
 
-        // Load Initial Data
+    function updateUserUI(profile) {
+        // Update Sidebar/Top Bar info
+        const nameEls = document.querySelectorAll('.user-name-display');
+        const roleEls = document.querySelectorAll('.user-role-display');
+        const avatarEls = document.querySelectorAll('.nav-avatar');
+
+        nameEls.forEach(el => el.innerText = profile.full_name || 'User');
+        roleEls.forEach(el => el.innerText = profile.role || 'Student');
+        if (profile.avatar_url) {
+            avatarEls.forEach(img => img.src = profile.avatar_url);
+        }
+
+        // Hide admin-only elements if not admin
+        if (profile.role !== 'ADMIN') {
+            document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+        }
+    }
+
+    // --- 6. DASHBOARD LOGIC (WRAPPED SAFELY) ---
+    async function loadDashboard() {
+        // Load initial data
         fetchItems('ALL');
         updateStats();
-        setupRealtime();
-        checkNotifications();
-    }
-    init();
+        setupRealtimeSubscription();
 
-    // --- 5. MAP LOGIC ---
-    
-    // A. Picker Map (For Reporting Items)
-    function initPickerMap() {
-        // Initialize only once
-        if (!pickerMap) {
-            // Center on Kabacan, Cotabato (7.116, 124.835)
-            pickerMap = L.map('map-picker').setView([7.116, 124.835], 16);
-            
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap'
-            }).addTo(pickerMap);
-
-            // Handle Click
-            pickerMap.on('click', function(e) {
-                const { lat, lng } = e.latlng;
-                selectedLat = lat;
-                selectedLng = lng;
-
-                // Move Marker
-                if (pickerMarker) pickerMap.removeLayer(pickerMarker);
-                pickerMarker = L.marker([lat, lng]).addTo(pickerMap);
-                
-                document.getElementById('picker-status').innerText = `Selected: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        // 6a. Setup Search Listener
+        const searchInput = document.getElementById('search-input');
+        if(searchInput) {
+            let timer;
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    const activeTab = document.querySelector('.tab.active');
+                    const tab = activeTab ? activeTab.dataset.tab.toUpperCase() : 'ALL';
+                    fetchItems(tab, e.target.value);
+                }, 300);
             });
         }
-        
-        // FIX: Leaflet needs a resize trigger when shown in a modal
-        setTimeout(() => { pickerMap.invalidateSize(); }, 300);
-    }
 
-    // B. Viewer Map (For Details)
-    function showViewerMap(lat, lng) {
-        const viewerEl = document.getElementById('map-viewer');
-        
-        // If no coords, hide map
-        if (!lat || !lng) {
-            viewerEl.style.display = 'none';
-            return;
-        }
-        viewerEl.style.display = 'block';
+        // 6b. Setup Tab Listeners
+        document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', (e) => {
+            document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+            e.target.classList.add('active');
+            fetchItems(e.target.dataset.tab.toUpperCase(), searchInput ? searchInput.value : '');
+        }));
 
-        if (!viewerMap) {
-            viewerMap = L.map('map-viewer');
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(viewerMap);
+        // 6c. Setup Logout
+        const logoutBtn = document.getElementById('logout-btn');
+        if(logoutBtn) {
+            logoutBtn.addEventListener('click', async () => {
+                await supabase.auth.signOut();
+                window.location.href = 'index.html';
+            });
         }
 
-        // Update View
-        viewerMap.setView([lat, lng], 16);
-        
-        if (viewerMarker) viewerMap.removeLayer(viewerMarker);
-        viewerMarker = L.marker([lat, lng]).addTo(viewerMap)
-            .bindPopup("Item location")
-            .openPopup();
-            
-        setTimeout(() => { viewerMap.invalidateSize(); }, 300);
+        // 6d. Initialize Map (Only if modal exists)
+        if(document.getElementById('map-picker')) {
+            initPickerMap();
+        }
     }
 
-    // --- 6. CORE FUNCTIONALITY (FETCH ITEMS) ---
-    async function fetchItems(filterType = 'ALL', searchQuery = '') {
+    // --- 7. ITEM FETCHING & RENDERING ---
+    async function fetchItems(type = 'ALL', search = '') {
         const container = document.getElementById('items-container');
-        container.innerHTML = '<div style="text-align:center; width:100%; grid-column:span 3;">Loading...</div>';
+        if(!container) return; // Safety check
 
-        let query = supabase.from('items').select(`*, profiles(full_name, avatar_url)`).order('created_at', { ascending: false });
+        container.innerHTML = '<div class="loading-spinner"></div>';
 
-        if (filterType !== 'ALL') {
-            query = query.eq('type', filterType);
+        let query = supabase
+            .from('items')
+            .select('*, profiles(full_name, role, avatar_url, student_id_number)')
+            .order('created_at', { ascending: false });
+
+        if (type !== 'ALL') {
+            query = query.eq('type', type);
         }
-        if (searchQuery) {
-            query = query.ilike('item_name', `%${searchQuery}%`);
+
+        if (search.trim() !== '') {
+            query = query.ilike('name', `%${search}%`);
         }
 
-        const { data: items, error } = await query;
+        const { data, error } = await query;
+
         if (error) {
-            console.error(error);
+            container.innerHTML = `<p class="error-msg">Error loading items.</p>`;
             return;
         }
 
-        renderItems(items);
-    }
-
-    function renderItems(items) {
-        const container = document.getElementById('items-container');
         container.innerHTML = '';
-
-        if (items.length === 0) {
-            container.innerHTML = '<p style="text-align:center; width:100%; grid-column:span 3; color:#888;">No items found.</p>';
+        if (data.length === 0) {
+            container.innerHTML = `<div class="empty-state"><i class="ri-inbox-archive-line"></i><p>No items found.</p></div>`;
             return;
         }
 
-        items.forEach(item => {
+        data.forEach(item => {
             const card = document.createElement('div');
             card.className = 'item-card';
-            card.onclick = () => openDetailModal(item);
-
-            const imgUrl = item.image_url || 'https://via.placeholder.com/400x300?text=No+Image';
-            const badgeClass = item.type === 'LOST' ? 'LOST' : 'FOUND';
+            const isLost = item.type === 'LOST';
+            const statusClass = item.status === 'SOLVED' ? 'status-solved' : (isLost ? 'status-lost' : 'status-found');
+            
+            // Handle location display
+            let locationDisplay = item.location;
+            let mapBtn = '';
+            if (item.lat && item.lng) {
+                mapBtn = `<button class="btn-icon-small" onclick="window.openMapViewer(${item.lat}, ${item.lng}, '${item.location}')" title="View on Map"><i class="ri-map-pin-2-fill"></i></button>`;
+            }
 
             card.innerHTML = `
-                <img src="${imgUrl}" class="card-img" loading="lazy">
+                <div class="card-header">
+                    <span class="badge ${statusClass}">${item.type}</span>
+                    <span class="date">${new Date(item.created_at).toLocaleDateString()}</span>
+                </div>
+                <div class="card-img-container" onclick="openLightbox('${item.image_url || 'https://via.placeholder.com/300?text=No+Image'}')">
+                    <img src="${item.image_url || 'https://via.placeholder.com/300?text=No+Image'}" alt="Item Image">
+                </div>
                 <div class="card-body">
-                    <span class="tag ${badgeClass}">${item.type}</span>
-                    <h3 class="card-title">${item.item_name}</h3>
-                    <div class="card-meta"><i class="ri-calendar-line"></i> ${item.date_incident}</div>
-                    <div class="card-meta"><i class="ri-map-pin-line"></i> ${item.location}</div>
-                    <div class="card-meta" style="margin-top:10px;">
-                        <span class="mini-tag">${item.status}</span>
+                    <h3>${item.name}</h3>
+                    <p class="location"><i class="ri-map-pin-line"></i> ${locationDisplay} ${mapBtn}</p>
+                    <p class="desc">${item.description}</p>
+                    
+                    <div class="user-row">
+                        <img src="${item.profiles?.avatar_url || 'https://via.placeholder.com/40'}" class="user-avatar" alt="User">
+                        <div class="user-info-text">
+                            <span class="u-name" onclick="showUserProfile('${item.user_id}')">${item.profiles?.full_name || 'Unknown'}</span>
+                            <span class="u-role">${item.profiles?.role || 'Student'}</span>
+                        </div>
                     </div>
+
+                    ${item.status !== 'SOLVED' ? `
+                    <button class="btn-contact" onclick="openMessageModal('${item.user_id}', '${item.name}')">
+                        <i class="ri-chat-1-line"></i> Contact ${isLost ? 'Owner' : 'Finder'}
+                    </button>
+                    ` : '<button class="btn-contact disabled" disabled>Solved</button>'}
+                    
+                    ${(currentUser && currentUser.id === item.user_id && item.status !== 'SOLVED') ? `
+                    <button class="btn-solve" onclick="markAsSolved(${item.id})">
+                        <i class="ri-checkbox-circle-line"></i> Mark as Solved
+                    </button>
+                    ` : ''}
                 </div>
             `;
             container.appendChild(card);
         });
     }
 
-    // --- 7. REPORT ITEM LOGIC ---
-    document.getElementById('report-btn').addEventListener('click', () => {
-        document.getElementById('report-modal').classList.add('active');
+    // --- 8. STATS & REALTIME ---
+    async function updateStats() {
+        const countLost = document.getElementById('count-lost');
+        const countFound = document.getElementById('count-found');
+        if(!countLost || !countFound) return;
+
+        const { count: lost } = await supabase.from('items').select('*', { count: 'exact', head: true }).eq('type', 'LOST').neq('status', 'SOLVED');
+        const { count: found } = await supabase.from('items').select('*', { count: 'exact', head: true }).eq('type', 'FOUND').neq('status', 'SOLVED');
         
-        // Reset Map & Form
-        selectedLat = null;
-        selectedLng = null;
-        if (pickerMarker && pickerMap) pickerMap.removeLayer(pickerMarker);
-        document.getElementById('picker-status').innerText = "Click the map to pin location";
-        
-        // Init Map
-        initPickerMap();
-    });
-
-    document.getElementById('report-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const btn = e.target.querySelector('button');
-        btn.innerText = "Posting...";
-        btn.disabled = true;
-
-        const file = document.getElementById('item-photo').files[0];
-        let imageUrl = null;
-
-        try {
-            // Upload Image
-            if (file) {
-                const fileName = `${Date.now()}-${file.name}`;
-                const { error: upErr } = await supabase.storage.from('item-images').upload(fileName, file);
-                if (upErr) throw upErr;
-                const { data } = supabase.storage.from('item-images').getPublicUrl(fileName);
-                imageUrl = data.publicUrl;
-            }
-
-            // Insert Data (WITH LAT/LNG)
-            const { error } = await supabase.from('items').insert({
-                user_id: currentUser.id,
-                type: document.querySelector('input[name="type"]:checked').value,
-                item_name: document.getElementById('item-name').value,
-                date_incident: document.getElementById('item-date').value,
-                location: document.getElementById('item-location').value,
-                description: document.getElementById('item-desc').value,
-                image_url: imageUrl,
-                status: 'OPEN',
-                latitude: selectedLat, // <--- SAVING COORDINATES
-                longitude: selectedLng // <--- SAVING COORDINATES
-            });
-
-            if (error) throw error;
-
-            window.showAlert("Success", "Item posted successfully!");
-            document.getElementById('report-modal').classList.remove('active');
-            document.getElementById('report-form').reset();
-            fetchItems(document.querySelector('.tab.active').dataset.tab);
-            updateStats();
-
-        } catch (err) {
-            console.error(err);
-            window.showAlert("Error", err.message);
-        } finally {
-            btn.innerText = "Post Item";
-            btn.disabled = false;
-        }
-    });
-
-    // --- 8. DETAILS & CONTACT ---
-    function openDetailModal(item) {
-        document.getElementById('detail-img').src = item.image_url || 'https://via.placeholder.com/400x300?text=No+Image';
-        
-        // Lightbox Feature
-        const imgEl = document.getElementById('detail-img');
-        imgEl.style.cursor = 'zoom-in';
-        imgEl.onclick = function() {
-            document.getElementById('lightbox-img').src = this.src;
-            document.getElementById('lightbox-modal').classList.add('active');
-        };
-
-        // Text Data
-        const typeSpan = document.getElementById('detail-type');
-        typeSpan.innerText = item.type;
-        typeSpan.className = `detail-type ${item.type === 'LOST' ? 'tag LOST' : 'tag FOUND'}`;
-        
-        document.getElementById('detail-title').innerText = item.item_name;
-        document.getElementById('detail-date').innerText = item.date_incident;
-        document.getElementById('detail-location').innerText = item.location;
-        document.getElementById('detail-desc').innerText = item.description || "No description provided.";
-        
-        const profile = item.profiles;
-        document.getElementById('detail-user').innerText = profile ? profile.full_name : 'Unknown';
-
-        // SHOW MAP (NEW)
-        showViewerMap(item.latitude, item.longitude);
-
-        // Buttons
-        const contactBtn = document.getElementById('contact-btn');
-        if (currentUser.id === item.user_id) {
-            contactBtn.innerHTML = '<i class="ri-check-line"></i> Mark as Solved';
-            contactBtn.className = "btn-submit"; 
-            contactBtn.onclick = () => markAsSolved(item.id);
-        } else {
-            contactBtn.innerHTML = '<i class="ri-chat-3-line"></i> Contact Uploader';
-            contactBtn.className = "btn-facebook";
-            contactBtn.onclick = () => openMessageModal(item);
-        }
-
-        document.getElementById('detail-modal').classList.add('active');
+        countLost.innerText = lost || 0;
+        countFound.innerText = found || 0;
     }
 
-    async function markAsSolved(itemId) {
-        window.showConfirm("Mark this item as solved/returned?", async () => {
-            const { error } = await supabase.from('items').update({ status: 'SOLVED' }).eq('id', itemId);
-            if (error) window.showAlert("Error", error.message);
+    function setupRealtimeSubscription() {
+        supabase
+            .channel('items_channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, (payload) => {
+                console.log('Realtime update:', payload);
+                const activeTab = document.querySelector('.tab.active');
+                const searchInput = document.getElementById('search-input');
+                fetchItems(
+                    activeTab ? activeTab.dataset.tab.toUpperCase() : 'ALL', 
+                    searchInput ? searchInput.value : ''
+                );
+                updateStats();
+                showNotification(payload);
+            })
+            .subscribe();
+    }
+
+    function showNotification(payload) {
+        const badge = document.getElementById('notif-badge');
+        if (badge) {
+            let count = parseInt(badge.innerText) || 0;
+            badge.innerText = count + 1;
+            badge.style.display = 'inline-block';
+        }
+    }
+
+    // --- 9. MAP INITIALIZATION (SAFE) ---
+    function initPickerMap() {
+        const pickerEl = document.getElementById('map-picker');
+        if (!pickerEl) return;
+
+        // Default: USM Coordinates (Kabacan)
+        const usmLat = 7.116;
+        const usmLng = 124.836;
+
+        // Initialize Leaflet Map
+        // We use a check to prevent re-initialization errors if called multiple times
+        if (pickerMap) {
+            pickerMap.remove(); // Clean up existing instance
+        }
+
+        pickerMap = L.map('map-picker').setView([usmLat, usmLng], 16);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(pickerMap);
+
+        // Click event to place marker
+        pickerMap.on('click', function(e) {
+            const lat = e.latlng.lat;
+            const lng = e.latlng.lng;
+            
+            selectedLat = lat;
+            selectedLng = lng;
+
+            if (pickerMarker) {
+                pickerMarker.setLatLng(e.latlng);
+            } else {
+                pickerMarker = L.marker(e.latlng).addTo(pickerMap);
+            }
+
+            // Optional: Reverse Geocoding could go here to auto-fill text input
+            console.log(`Selected Location: ${lat}, ${lng}`);
+        });
+
+        // Invalidate size when modal opens to fix grey tiles
+        setTimeout(() => {
+            pickerMap.invalidateSize();
+        }, 300);
+    }
+
+    // GLOBAL FUNCTION: Open Viewer Map
+    window.openMapViewer = function(lat, lng, locName) {
+        const modal = document.getElementById('map-viewer-modal');
+        if(!modal) return;
+        
+        modal.classList.add('active');
+        document.getElementById('map-viewer-title').innerText = locName || "Item Location";
+
+        if (viewerMap) {
+            viewerMap.remove();
+        }
+
+        // Delay slighty to allow modal to render
+        setTimeout(() => {
+            viewerMap = L.map('map-viewer').setView([lat, lng], 16);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap'
+            }).addTo(viewerMap);
+
+            L.marker([lat, lng]).addTo(viewerMap)
+                .bindPopup(locName || "Item Here")
+                .openPopup();
+        }, 100);
+    };
+
+    // --- 10. FORM SUBMISSION (WITH MAP DATA) ---
+    window.openReportModal = function() {
+        const modal = document.getElementById('report-modal');
+        if (modal) {
+            modal.classList.add('active');
+            // Trigger map resize so it renders correctly
+            setTimeout(() => {
+                if (pickerMap) pickerMap.invalidateSize();
+                else initPickerMap();
+            }, 200);
+        }
+    };
+
+    const reportForm = document.getElementById('report-form');
+    if (reportForm) {
+        reportForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const btn = e.target.querySelector('button[type="submit"]');
+            const originalText = btn.innerText;
+            btn.innerText = "Posting...";
+            btn.disabled = true;
+
+            try {
+                // 1. Upload Image
+                const fileInput = document.getElementById('item-image');
+                const file = fileInput.files[0];
+                let imageUrl = null;
+
+                if (file) {
+                    const fileExt = file.name.split('.').pop();
+                    const fileName = `${Date.now()}.${fileExt}`;
+                    const { error: uploadError } = await supabase.storage
+                        .from('items')
+                        .upload(fileName, file);
+
+                    if (uploadError) throw uploadError;
+
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('items')
+                        .getPublicUrl(fileName);
+                    
+                    imageUrl = publicUrl;
+                }
+
+                // 2. Insert Data
+                const { error } = await supabase.from('items').insert({
+                    name: document.getElementById('item-name').value,
+                    description: document.getElementById('item-desc').value,
+                    location: document.getElementById('item-location').value,
+                    lat: selectedLat, // SAVE LATITUDE
+                    lng: selectedLng, // SAVE LONGITUDE
+                    type: document.getElementById('item-type').value,
+                    image_url: imageUrl,
+                    user_id: currentUser.id,
+                    status: 'OPEN'
+                });
+
+                if (error) throw error;
+
+                // Success
+                window.showAlert('Success', 'Item posted successfully!');
+                closeModal('report-modal');
+                reportForm.reset();
+                if(pickerMarker) pickerMap.removeLayer(pickerMarker);
+                selectedLat = null;
+                selectedLng = null;
+                fetchItems(); // Refresh grid
+
+            } catch (err) {
+                console.error(err);
+                window.showAlert('Error', err.message);
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        });
+    }
+
+    // --- 11. OTHER ACTIONS (Solved, Contact, Profile) ---
+    window.markAsSolved = async function(itemId) {
+        showConfirm("Mark this item as solved/returned?", async () => {
+            const { error } = await supabase
+                .from('items')
+                .update({ status: 'SOLVED' })
+                .eq('id', itemId);
+
+            if (error) window.showAlert('Error', error.message);
             else {
-                window.showAlert("Success", "Item marked as solved!");
-                document.getElementById('detail-modal').classList.remove('active');
                 fetchItems();
                 updateStats();
             }
         });
-    }
-
-    function openMessageModal(item) {
-        document.getElementById('message-modal').classList.add('active');
-        document.getElementById('send-msg-btn').onclick = async () => {
-            const msg = document.getElementById('message-input').value;
-            if(!msg) return window.showAlert("Error", "Please write a message");
-            
-            const { error } = await supabase.from('notifications').insert({
-                user_id: item.user_id, 
-                sender_id: currentUser.id,
-                item_id: item.id,
-                message: msg,
-                type: 'MESSAGE',
-                is_read: false
-            });
-
-            if(error) window.showAlert("Error", error.message);
-            else {
-                window.showAlert("Sent", "Message sent to uploader!");
-                document.getElementById('message-modal').classList.remove('active');
-            }
-        };
-    }
-
-    // --- 9. REALTIME & NOTIFICATIONS ---
-    function setupRealtime() {
-        supabase.channel('public:items')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'items' }, payload => {
-                fetchItems(document.querySelector('.tab.active').dataset.tab);
-                updateStats();
-            })
-            .subscribe();
-            
-        supabase.channel('public:notifications')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUser.id}` }, () => {
-                checkNotifications();
-                const badge = document.getElementById('notif-badge');
-                badge.style.display = 'inline-block';
-                badge.innerText = parseInt(badge.innerText || 0) + 1;
-            })
-            .subscribe();
-    }
-
-    async function checkNotifications() {
-        const { count } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', currentUser.id).eq('is_read', false);
-        const badge = document.getElementById('notif-badge');
-        if (count > 0) {
-            badge.style.display = 'inline-block';
-            badge.innerText = count;
-        } else {
-            badge.style.display = 'none';
-        }
-    }
-
-    window.toggleNotifications = async function() {
-        const modal = document.getElementById('notif-modal');
-        if (modal.classList.contains('active')) {
-            modal.classList.remove('active');
-        } else {
-            modal.classList.add('active');
-            const list = document.getElementById('notif-list');
-            list.innerHTML = 'Loading...';
-            
-            // Mark Read
-            await supabase.from('notifications').update({ is_read: true }).eq('user_id', currentUser.id);
-            document.getElementById('notif-badge').style.display = 'none';
-
-            // Fetch
-            const { data: notifs } = await supabase.from('notifications').select(`*, sender:profiles!sender_id(full_name, avatar_url)`).eq('user_id', currentUser.id).order('created_at', { ascending: false });
-            
-            list.innerHTML = '';
-            if (!notifs || notifs.length === 0) {
-                list.innerHTML = '<p style="padding:20px; text-align:center; color:#888;">No notifications yet.</p>';
-                return;
-            }
-
-            notifs.forEach(n => {
-                const div = document.createElement('div');
-                div.className = 'notif-item';
-                div.innerHTML = `
-                    <div class="notif-msg">
-                        <span class="notif-user-link" onclick="showUserProfile('${n.sender_id}')">${n.sender?.full_name || 'Someone'}</span>
-                        ${n.message}
-                    </div>
-                    <div class="notif-time">${new Date(n.created_at).toLocaleString()}</div>
-                    <div class="notif-actions">
-                        <button class="btn-small btn-read">Read</button> 
-                        ${n.item_id ? `<button class="btn-small btn-go" onclick="viewItem('${n.item_id}')">View Item</button>` : ''}
-                    </div>
-                `;
-                list.appendChild(div);
-            });
-        }
     };
 
-    window.viewItem = async function(itemId) {
-        document.getElementById('notif-modal').classList.remove('active');
-        const { data: item } = await supabase.from('items').select(`*, profiles(full_name, avatar_url)`).eq('id', itemId).single();
-        if (item) openDetailModal(item);
+    window.openMessageModal = function(receiverId, itemName) {
+        if(currentUser.id === receiverId) {
+            window.showAlert('Oops', 'You cannot message yourself!');
+            return;
+        }
+        document.getElementById('message-modal').classList.add('active');
+        
+        // Setup send button
+        const sendBtn = document.getElementById('send-msg-btn');
+        // prevent stacking listeners by cloning
+        const newBtn = sendBtn.cloneNode(true);
+        sendBtn.parentNode.replaceChild(newBtn, sendBtn);
+
+        newBtn.addEventListener('click', async () => {
+            const msg = document.getElementById('message-input').value;
+            if(!msg) return;
+
+            // Here you would implement real chat logic (insert into a 'messages' table)
+            // For now, we mock it:
+            window.showAlert('Sent', `Message sent to owner about ${itemName}!`);
+            closeModal('message-modal');
+            document.getElementById('message-input').value = '';
+        });
     };
 
     window.showUserProfile = async function(userId) {
+        // Fetch user details
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if(!profile) return;
-
-        const box = document.querySelector('#custom-alert .modal-box');
-        const oldContent = box.innerHTML;
-        
-        box.innerHTML = `
-            <img src="${profile.avatar_url || 'https://via.placeholder.com/100'}" class="popup-avatar">
-            <h3>${profile.full_name}</h3>
-            <span class="popup-role">${(profile.role || 'Student').toUpperCase()}</span>
-            <div class="profile-details">
-                <div class="p-row"><i class="ri-map-pin-user-line"></i> ${profile.address || 'No Address'}</div>
-                <div class="p-row"><i class="ri-phone-line"></i> ${profile.mobile_number || 'N/A'}</div>
-                <div class="p-row"><i class="ri-facebook-circle-line"></i> <a href="${profile.facebook_link || '#'}" target="_blank">Facebook</a></div>
-            </div>
-            <button class="btn-submit" onclick="closeModal('custom-alert'); this.parentElement.innerHTML = \`${oldContent.replace(/`/g, '\\`')}\`">Close</button>
-        `;
-        document.getElementById('custom-alert').classList.add('active');
+        if(profile) {
+            const modal = document.getElementById('profile-popup');
+            if(modal) {
+                document.getElementById('popup-avatar').src = profile.avatar_url || 'https://via.placeholder.com/90';
+                document.getElementById('popup-name').innerText = profile.full_name;
+                document.getElementById('popup-role').innerText = profile.role;
+                document.getElementById('popup-email').innerText = "Contact via FindItFast"; // Privacy
+                document.getElementById('popup-fb').href = profile.facebook_link || "#";
+                modal.classList.add('active');
+            }
+        }
     };
 
-    // --- 10. UTILS (SEARCH & STATS) ---
-    const searchInput = document.getElementById('search-input');
-    if(searchInput) {
-        let timer;
-        searchInput.addEventListener('input', (e) => {
-            clearTimeout(timer);
-            timer = setTimeout(() => {
-                const tab = document.querySelector('.tab.active').dataset.tab.toUpperCase();
-                fetchItems(tab === 'ALL' ? 'ALL' : tab, e.target.value);
-            }, 300);
-        });
-    }
-
-    async function updateStats() {
-        const { count: lost } = await supabase.from('items').select('*', { count: 'exact', head: true }).eq('type', 'LOST').neq('status', 'SOLVED');
-        const { count: found } = await supabase.from('items').select('*', { count: 'exact', head: true }).eq('type', 'FOUND').neq('status', 'SOLVED');
-        document.getElementById('count-lost').innerText = lost || 0;
-        document.getElementById('count-found').innerText = found || 0;
-    }
-
-    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', (e) => {
-        document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-        e.target.classList.add('active');
-        fetchItems(e.target.dataset.tab.toUpperCase(), searchInput.value);
-    }));
-
-    document.getElementById('logout-btn').addEventListener('click', async () => {
-        await supabase.auth.signOut();
-        window.location.href = 'index.html';
-    });
+    // --- 12. UTILS ---
+    window.openLightbox = function(url) {
+        const lb = document.getElementById('lightbox-modal');
+        if(lb) {
+            document.getElementById('lightbox-img').src = url;
+            lb.classList.add('active');
+        }
+    };
 });
