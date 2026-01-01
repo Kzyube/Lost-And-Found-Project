@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>USM FindItFast - Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="dashboard-body">
+
+    <div class="dashboard-layout">
+        <nav class="sidebar">
+            <div class="logo-area">
+                <div class="logo-icon"><i class="ri-search-eye-line"></i></div>
+                <h2>FindItFast</h2>
+            </div>
+
+            <ul class="nav-links">
+                <li class="active"><a href="#"><i class="ri-dashboard-line"></i> Dashboard</a></li>
+                <li onclick="toggleNotifications()">
+                    <a href="#"><i class="ri-notification-3-line"></i> Notifications <span class="badge" id="notif-badge" style="display:none">0</span></a>
+                </li>
+            </ul>
+
+            <div class="user-footer">
+                <img src="https://via.placeholder.com/40" id="nav-avatar" class="nav-avatar">
+                <div class="user-info">
+                    <h4 id="nav-name">Loading...</h4>
+                    <small>Online</small>
+                </div>
+                <div class="footer-actions">
+                    <button id="settings-btn" onclick="openProfileSettings()"><i class="ri-settings-3-line"></i></button>
+                    <button id="logout-btn"><i class="ri-logout-box-r-line"></i></button>
+                </div>
+            </div>
+        </nav>
+
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="welcome-text">
+                    <h1>Overview</h1>
+                    <p>Track lost and found items in real-time.</p>
+                </div>
+                <div class="top-actions">
+                    <div class="search-box">
+                        <i class="ri-search-line"></i>
+                        <input type="text" id="search-input" placeholder="Search tags, name, location...">
+                    </div>
+                    <button class="btn-primary" onclick="openModal('LOST')"><i class="ri-add-line"></i> Report Lost</button>
+                    <button class="btn-secondary" onclick="openModal('FOUND')"><i class="ri-hand-heart-line"></i> I Found It</button>
+                </div>
+            </header>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="icon-box red"><i class="ri-search-2-line"></i></div>
+                    <div><h3 id="count-lost">--</h3><p>Active Lost Reports</p></div>
+                </div>
+                <div class="stat-card">
+                    <div class="icon-box green"><i class="ri-hand-heart-line"></i></div>
+                    <div><h3 id="count-found">--</h3><p>Active Found Reports</p></div>
+                </div>
+            </div>
+
+            <div class="feed-section">
+                <div class="feed-header">
+                    <h3>Recent Activity</h3>
+                    <div class="tabs">
+                        <button class="tab active" data-tab="all">All</button>
+                        <button class="tab" data-tab="lost">Lost</button>
+                        <button class="tab" data-tab="found">Found</button>
+                    </div>
+                </div>
+                <div class="items-grid" id="feed-container">
+                    <div class="loading-state">Loading items...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="modal-overlay" id="report-modal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h2 id="modal-title">Report Item</h2>
+                <button class="close-btn" onclick="closeModal('report-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <form id="report-form">
+                <input type="hidden" id="post-type" value="LOST">
+                <input type="hidden" id="edit-item-id" value=""> 
+                <input type="hidden" id="existing-image-url" value=""> 
+
+                <div class="form-grid">
+                    <div class="form-group full"><label>Item Name</label><input type="text" id="item-title" required></div>
+                    <div class="form-group"><label>Location</label><input type="text" id="item-location" required></div>
+                    <div class="form-group"><label>Date</label><input type="date" id="item-date" required></div>
+                    <div class="form-group full"><label>Tags (Comma separated)</label><input type="text" id="item-tags" placeholder="laptop, black, acer"></div>
+                    <div class="form-group full">
+                        <label>Photo <small id="photo-label-extra" style="color:#888; font-weight:normal;"></small></label>
+                        <input type="file" id="item-image" accept="image/*">
+                    </div>
+                    <div class="form-group full"><label>Description</label><textarea id="item-desc" rows="3"></textarea></div>
+                </div>
+                <button type="submit" class="btn-submit" id="form-submit-btn">Submit Report</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="detail-modal">
+        <div class="modal-box detail-box">
+            <button class="close-btn-abs" onclick="closeModal('detail-modal')"><i class="ri-close-line"></i></button>
+            <div class="detail-img-box"><img id="detail-img" src="" alt="Item Image"></div>
+            <div class="detail-info">
+                <span id="detail-type" class="detail-type">TYPE</span>
+                <h2 id="detail-title" class="detail-h2">Item Title</h2>
+                <div class="detail-meta">
+                    <span><i class="ri-map-pin-line"></i> <b id="detail-location">Location</b></span>
+                    <span><i class="ri-calendar-line"></i> <b id="detail-date">Date</b></span>
+                </div>
+                <div class="tags-row" id="detail-tags"></div>
+                <p id="detail-desc" class="detail-desc">Description goes here...</p>
+                <div class="detail-actions" id="detail-actions"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="notif-modal">
+        <div class="modal-box" style="max-width: 450px;">
+            <div class="modal-header">
+                <h2>Notifications</h2>
+                <button class="close-btn" onclick="closeModal('notif-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <div id="notif-list" class="notif-list"><p>No new notifications.</p></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="user-profile-modal">
+        <div class="modal-box center-text" style="max-width: 380px;">
+            <button class="close-btn-abs" onclick="closeModal('user-profile-modal')"><i class="ri-close-line"></i></button>
+            
+            <div class="profile-header">
+                <img id="popup-avatar" src="https://via.placeholder.com/100" class="popup-avatar">
+                <h3 id="popup-name">User Name</h3>
+                <span id="popup-role" class="popup-role">Student</span>
+            </div>
+
+            <div class="profile-details">
+                <div class="p-row">
+                    <i class="ri-id-card-line"></i>
+                    <span id="popup-id">ID: 123456</span>
+                </div>
+                <div class="p-row">
+                    <i class="ri-map-pin-user-line"></i>
+                    <span id="popup-address">Kabacan, North Cotabato</span>
+                </div>
+            </div>
+
+            <a id="popup-fb" href="#" target="_blank" class="btn-facebook" style="margin-top:20px;">
+                <i class="ri-facebook-circle-fill"></i> Open Facebook Profile
+            </a>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal-box" style="max-width: 450px;">
+            <div class="modal-header">
+                <h2>My Profile Settings</h2>
+                <button class="close-btn" onclick="closeModal('settings-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <form id="settings-form">
+                <div class="form-group full">
+                    <label>Full Name</label>
+                    <input type="text" id="set-name" required>
+                </div>
+                <div class="form-group full">
+                    <label>Student ID Number</label>
+                    <input type="text" id="set-id" placeholder="e.g. 2023-1234">
+                </div>
+                <div class="form-group full">
+                    <label>Address / Department</label>
+                    <input type="text" id="set-address" placeholder="e.g. College of Computing">
+                </div>
+                <div class="form-group full">
+                    <label>Facebook Profile Link</label>
+                    <input type="url" id="set-fb" placeholder="https://facebook.com/username">
+                    <small style="color:#666; font-size:0.75rem;">Important: This helps people contact you.</small>
+                </div>
+                <button type="submit" class="btn-submit">Save Changes</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="custom-alert">
+        <div class="modal-box center-text" style="max-width: 350px;">
+            <div class="icon-circle" id="alert-icon"><i class="ri-information-line"></i></div>
+            <h3 id="alert-title">Notice</h3>
+            <p id="alert-msg">Message goes here.</p>
+            <button class="btn-primary full-width" onclick="closeModal('custom-alert')">OK</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="custom-confirm">
+        <div class="modal-box center-text" style="max-width: 350px;">
+            <div class="icon-circle warn"><i class="ri-question-mark"></i></div>
+            <h3>Are you sure?</h3>
+            <p id="confirm-msg">Do you really want to do this?</p>
+            <div class="action-row">
+                <button class="btn-secondary" onclick="closeModal('custom-confirm')">Cancel</button>
+                <button class="btn-primary" id="confirm-yes-btn">Yes, I'm Sure</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="message-modal">
+        <div class="modal-box" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2>Contact Uploader</h2>
+                <button class="close-btn" onclick="closeModal('message-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <p style="margin-bottom:15px; font-size:0.9rem; color:#666;">
+                Verify that you found/own this item. This message will be sent to the user.
+            </p>
+            <textarea id="message-input" rows="4" style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;" placeholder="Hi! I think I found your item at..."></textarea>
+            <button class="btn-submit" id="send-msg-btn">Send Message</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

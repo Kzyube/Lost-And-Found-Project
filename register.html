@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>USM FindItFast - Registration</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        :root {
+            --usm-green: #004d25;
+            --usm-gold: #FFD700;
+            --usm-dark: #002a14;
+            --white: #ffffff;
+            --text-grey: #444;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--usm-dark);
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- MAIN LAYOUT --- */
+        .main-card {
+            display: flex;
+            width: 95%;
+            max-width: 1100px;
+            height: 90vh;
+            background: var(--white);
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+            position: relative;
+        }
+
+        .left-panel {
+            width: 35%;
+            background: linear-gradient(160deg, var(--usm-green), var(--usm-dark));
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--white);
+            border-right: 4px solid var(--usm-gold);
+            text-align: center;
+        }
+
+        .brand-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+            color: var(--usm-gold);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .brand-subtitle { font-size: 0.9rem; opacity: 0.8; margin-bottom: 30px; font-weight: 300; }
+
+        .photo-container {
+            width: 220px;
+            height: 220px;
+            border-radius: 50%;
+            border: 6px solid var(--usm-gold);
+            overflow: hidden;
+            position: relative;
+            background: #f0f0f0;
+            cursor: grab;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            transition: transform 0.2s;
+        }
+        .photo-container:active { cursor: grabbing; transform: scale(0.98); }
+
+        #avatar-img {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            min-width: 100%; min-height: 100%;
+            pointer-events: none; user-select: none;
+        }
+
+        .upload-hint { margin-top: 15px; font-size: 0.8rem; color: rgba(255,255,255,0.7); }
+
+        .upload-btn {
+            margin-top: 20px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid var(--usm-gold);
+            color: var(--usm-gold);
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .upload-btn:hover { background: var(--usm-gold); color: var(--usm-dark); }
+
+        .right-panel {
+            width: 65%;
+            padding: 40px;
+            display: flex; flex-direction: column; justify-content: center;
+        }
+
+        .form-header h2 { color: var(--usm-green); font-size: 1.5rem; margin-bottom: 20px; }
+        
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .full-width { grid-column: span 2; }
+
+        label { display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-grey); margin-bottom: 5px; text-transform: uppercase; }
+
+        input, select {
+            width: 100%; padding: 12px 15px; border: 2px solid #eee; border-radius: 8px;
+            background: #f9f9f9; font-size: 0.9rem; font-family: inherit; transition: 0.3s;
+        }
+        input:focus, select:focus { outline: none; border-color: var(--usm-green); background: white; }
+
+        .action-buttons { margin-top: 30px; display: flex; gap: 15px; }
+
+        .btn-save {
+            flex: 2; padding: 15px; background: var(--usm-green); color: white;
+            border: none; border-radius: 10px; font-weight: 600; font-size: 1rem; cursor: pointer;
+            transition: 0.3s; box-shadow: 0 5px 15px rgba(0, 77, 37, 0.2);
+        }
+        .btn-save:hover { background: #00381b; transform: translateY(-2px); }
+        .btn-save:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+
+        .btn-cancel {
+            flex: 1; padding: 15px; background: white; color: #d32f2f;
+            border: 2px solid #ffebee; border-radius: 10px; font-weight: 600; cursor: pointer; transition: 0.3s;
+        }
+        .btn-cancel:hover { background: #ffebee; border-color: #ffcdd2; }
+
+        /* --- CUSTOM SUCCESS POPUP --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 42, 20, 0.85); /* Dark Green Tint */
+            display: none; /* Hidden Default */
+            justify-content: center; align-items: center;
+            z-index: 9999; backdrop-filter: blur(5px);
+        }
+        
+        .modal-box {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            width: 90%; max-width: 400px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            border-top: 8px solid var(--usm-gold);
+            transform: scale(0.8); opacity: 0;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .modal-overlay.active { display: flex; }
+        .modal-overlay.active .modal-box { transform: scale(1); opacity: 1; }
+
+        .success-icon {
+            font-size: 4rem; margin-bottom: 10px;
+            animation: bounce 1s infinite alternate;
+        }
+        
+        @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+
+        .modal-h2 { color: var(--usm-green); margin-bottom: 10px; font-size: 1.5rem; }
+        .modal-p { color: #666; margin-bottom: 25px; line-height: 1.5; font-size: 0.95rem; }
+
+        .btn-modal-go {
+            width: 100%; padding: 15px; background: var(--usm-green); color: white;
+            border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-modal-go:hover { background: #00381b; transform: scale(1.02); }
+
+        @media (max-width: 900px) {
+            .main-card { flex-direction: column; height: auto; max-height: 95vh; overflow-y: auto; }
+            .left-panel, .right-panel { width: 100%; padding: 30px; }
+            .left-panel { flex-direction: row; justify-content: space-between; text-align: left; padding: 20px; }
+            .photo-container { width: 80px; height: 80px; border-width: 3px; }
+            .brand-subtitle { display: none; }
+            .upload-btn { display: none; } 
+        }
+    </style>
+</head>
+<body>
+
+<div class="main-card">
+    <div class="left-panel">
+        <div>
+            <div class="brand-title">USM Profile</div>
+            <div class="brand-subtitle">Complete your digital identity</div>
+            
+            <button type="button" class="upload-btn" id="upload-trigger-btn">
+                <span>📁 Upload New Photo</span>
+            </button>
+            <input id="file-input" type="file" accept="image/*" style="display:none;">
+            
+            <div class="upload-hint">
+                <span id="drag-hint">👆 Click & Drag photo to reframe</span>
+            </div>
+        </div>
+
+        <div class="photo-container" id="photo-frame">
+            <img id="avatar-img" src="https://via.placeholder.com/300x300?text=No+Image" draggable="false">
+        </div>
+    </div>
+
+    <div class="right-panel">
+        <div class="form-header">
+            <h2>Personal Information</h2>
+        </div>
+
+        <form id="profile-form">
+            <div class="form-grid">
+                <div class="full-width">
+                    <label>Full Name</label>
+                    <input type="text" id="full-name" required placeholder="e.g. Juan Dela Cruz">
+                </div>
+                
+                <div class="full-width">
+                    <label>Address</label>
+                    <input type="text" id="address" required placeholder="Boarding House / City">
+                </div>
+
+                <div>
+                    <label>Role</label>
+                    <select id="role" required>
+                        <option value="student">Student</option>
+                        <option value="teacher">Faculty</option>
+                        <option value="staff">Staff</option>
+                        <option value="concerned">Concerned Citizen</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label>ID Number</label>
+                    <input type="text" id="student-id" placeholder="(Optional)">
+                </div>
+
+                <div>
+                    <label>Mobile Number</label>
+                    <input type="tel" id="mobile" required placeholder="09xxxxxxxxx">
+                </div>
+
+                <div>
+                    <label>Facebook Link</label>
+                    <input type="url" id="fb-link" placeholder="(Optional)">
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <button type="button" class="btn-cancel" id="cancel-btn">Sign Out</button>
+                <button type="submit" class="btn-save" id="save-btn">Save Profile</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="success-modal">
+    <div class="modal-box">
+        <div class="success-icon">🎉</div>
+        <h2 class="modal-h2">Registration Complete!</h2>
+        <p class="modal-p">Your profile has been successfully saved to the USM network. You can now access the dashboard.</p>
+        <button class="btn-modal-go" onclick="window.location.href='dashboard.html'">Enter Dashboard &rarr;</button>
+    </div>
+</div>
+
+<script>
+    // 1. SUPABASE CONFIG
+    const SUPABASE_URL = 'https://lznqmpuofpedlljnamtl.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx6bnFtcHVvZnBlZGxsam5hbXRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcwMTc3ODAsImV4cCI6MjA4MjU5Mzc4MH0.LIR7bN7_Ds1-fe0LUoPjKAm-QMN3_OcJDx7wwRs5mwM';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let currentUser = null;
+    let originalImageFile = null;
+
+    // --- DRAG LOGIC VARIABLES ---
+    let isDragging = false;
+    let startX, startY, initialLeft, initialTop;
+    const photoFrame = document.getElementById('photo-frame');
+    const avatarImg = document.getElementById('avatar-img');
+
+    // 2. INIT & AUTH CHECK
+    async function init() {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (!session) {
+            window.location.href = 'index.html';
+            return;
+        }
+        currentUser = session.user;
+        if (currentUser.user_metadata?.full_name) {
+            document.getElementById('full-name').value = currentUser.user_metadata.full_name;
+        }
+    }
+    init();
+
+    // 3. UPLOAD HANDLING
+    document.getElementById('upload-trigger-btn').addEventListener('click', () => {
+        document.getElementById('file-input').click();
+    });
+
+    document.getElementById('file-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            originalImageFile = file;
+            avatarImg.src = URL.createObjectURL(file);
+            
+            avatarImg.onload = () => {
+                avatarImg.style.width = "150%"; 
+                avatarImg.style.height = "auto";
+                avatarImg.style.left = "50%";
+                avatarImg.style.top = "50%";
+                avatarImg.style.transform = "translate(-50%, -50%)";
+            };
+            document.getElementById('upload-trigger-btn').innerHTML = "<span>✅ Change Photo</span>";
+        }
+    });
+
+    // 4. DRAG LOGIC
+    photoFrame.addEventListener('mousedown', startDrag);
+    photoFrame.addEventListener('touchstart', startDrag, {passive: false});
+
+    function startDrag(e) {
+        if (!originalImageFile) return;
+        e.preventDefault();
+        isDragging = true;
+        
+        const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+        const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+        
+        startX = clientX; startY = clientY;
+        
+        const style = window.getComputedStyle(avatarImg);
+        
+        if (avatarImg.style.transform) {
+            const rect = avatarImg.getBoundingClientRect();
+            const containerRect = photoFrame.getBoundingClientRect();
+            initialLeft = rect.left - containerRect.left;
+            initialTop = rect.top - containerRect.top;
+            avatarImg.style.transform = 'none';
+            avatarImg.style.left = initialLeft + 'px';
+            avatarImg.style.top = initialTop + 'px';
+            avatarImg.style.width = rect.width + 'px'; 
+        } else {
+            initialLeft = parseFloat(avatarImg.style.left) || 0;
+            initialTop = parseFloat(avatarImg.style.top) || 0;
+        }
+
+        document.addEventListener('mousemove', onDrag);
+        document.addEventListener('mouseup', stopDrag);
+        document.addEventListener('touchmove', onDrag, {passive: false});
+        document.addEventListener('touchend', stopDrag);
+    }
+
+    function onDrag(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+        const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+        const dx = clientX - startX;
+        const dy = clientY - startY;
+        avatarImg.style.left = `${initialLeft + dx}px`;
+        avatarImg.style.top = `${initialTop + dy}px`;
+    }
+
+    function stopDrag() {
+        isDragging = false;
+        document.removeEventListener('mousemove', onDrag);
+        document.removeEventListener('mouseup', stopDrag);
+        document.removeEventListener('touchmove', onDrag);
+        document.removeEventListener('touchend', stopDrag);
+    }
+
+    // 5. SAVE & SHOW MODAL
+    document.getElementById('profile-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('save-btn');
+        const oldText = btn.innerText;
+        btn.innerText = "Processing...";
+        btn.disabled = true;
+
+        try {
+            let avatarUrl = null;
+
+            if (originalImageFile) {
+                // CROP CANVAS
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const frameSize = 220; 
+                canvas.width = frameSize; canvas.height = frameSize;
+
+                const imgRect = avatarImg.getBoundingClientRect();
+                const frameRect = photoFrame.getBoundingClientRect();
+                const x = imgRect.left - frameRect.left;
+                const y = imgRect.top - frameRect.top;
+                const w = imgRect.width;
+                const h = imgRect.height;
+
+                const imgObj = new Image();
+                imgObj.src = avatarImg.src;
+                await new Promise(r => imgObj.onload = r);
+
+                ctx.fillStyle = "#FFFFFF"; 
+                ctx.fillRect(0,0, frameSize, frameSize);
+                ctx.drawImage(imgObj, x, y, w, h);
+
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+                
+                const fileName = `${currentUser.id}-${Date.now()}.jpg`;
+                const { error: upErr } = await supabaseClient.storage.from('avatars').upload(fileName, blob);
+                if (upErr) throw upErr;
+                
+                const { data } = supabaseClient.storage.from('avatars').getPublicUrl(fileName);
+                avatarUrl = data.publicUrl;
+            }
+
+            // UPSERT
+            const { error } = await supabaseClient.from('profiles').upsert({
+                id: currentUser.id,
+                full_name: document.getElementById('full-name').value,
+                address: document.getElementById('address').value,
+                role: document.getElementById('role').value,
+                student_id_number: document.getElementById('student-id').value,
+                mobile_number: document.getElementById('mobile').value,
+                facebook_link: document.getElementById('fb-link').value,
+                avatar_url: avatarUrl
+            });
+
+            if (error) throw error;
+
+            // --- SHOW SUCCESS MODAL (REPLACING ALERT) ---
+            document.getElementById('success-modal').classList.add('active');
+
+        } catch (err) {
+            console.error(err);
+            alert("Error: " + err.message); // Keep simple alert for errors only
+            btn.innerText = oldText;
+            btn.disabled = false;
+        }
+    });
+
+    document.getElementById('cancel-btn').addEventListener('click', async () => {
+        await supabaseClient.auth.signOut();
+        window.location.href = 'index.html';
+    });
+</script>
+
+</body>
+</html>
