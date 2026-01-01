@@ -149,6 +149,11 @@ document.addEventListener("DOMContentLoaded", function() {
         modal.classList.add('active');
 
         document.getElementById('detail-img').src = item.image_url || 'https://placehold.co/600x400';
+            document.getElementById('detail-img').style.cursor = 'zoom-in';
+                document.getElementById('detail-img').onclick = function() {
+                document.getElementById('lightbox-img').src = this.src;
+                document.getElementById('lightbox-modal').classList.add('active');
+                    };
         document.getElementById('detail-type').className = `detail-type tag ${item.type}`;
         document.getElementById('detail-type').innerText = item.type;
         document.getElementById('detail-title').innerText = item.title;
