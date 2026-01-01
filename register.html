@@ -184,10 +184,11 @@
         @media (max-width: 900px) {
             .main-card { flex-direction: column; height: auto; max-height: 95vh; overflow-y: auto; }
             .left-panel, .right-panel { width: 100%; padding: 30px; }
-            .left-panel { flex-direction: row; justify-content: space-between; text-align: left; padding: 20px; }
+            .left-panel { flex-direction: row; justify-content: space-between; text-align: left; padding: 20px; align-items: center; }
             .photo-container { width: 80px; height: 80px; border-width: 3px; }
             .brand-subtitle { display: none; }
-            .upload-btn { display: none; } 
+            /* FIXED: Upload button is now visible on mobile */
+            .upload-btn { margin-top: 0; padding: 8px 15px; font-size: 0.75rem; } 
         }
     </style>
 </head>
@@ -200,12 +201,11 @@
             <div class="brand-subtitle">Complete your digital identity</div>
             
             <button type="button" class="upload-btn" id="upload-trigger-btn">
-                <span>📁 Upload New Photo</span>
+                <span>📁 Upload Photo</span>
             </button>
             <input id="file-input" type="file" accept="image/*" style="display:none;">
             
-            <div class="upload-hint">
-                <span id="drag-hint">👆 Click & Drag photo to reframe</span>
+            <div class="upload-hint" style="display:none;"> <span id="drag-hint">👆 Click & Drag photo to reframe</span>
             </div>
         </div>
 
