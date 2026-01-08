@@ -64,6 +64,7 @@ document.addEventListener("DOMContentLoaded", function() {
             updateUserUI(profile);
             loadDashboard(); 
         } else {
+            // Redirect to register if no profile found
             if (window.location.pathname.indexOf('register.html') === -1) {
                 window.location.href = 'register.html';
             }
