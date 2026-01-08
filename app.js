@@ -61,11 +61,9 @@ document.addEventListener("DOMContentLoaded", function() {
 
         if (profile) {
             currentProfile = profile;
-            console.log("Logged in as:", currentProfile.role);
             updateUserUI(profile);
             loadDashboard(); 
         } else {
-            // If no profile, redirect to register unless already there
             if (window.location.pathname.indexOf('register.html') === -1) {
                 window.location.href = 'register.html';
             }
@@ -88,7 +86,6 @@ document.addEventListener("DOMContentLoaded", function() {
         setupRealtime();
         checkNotifications();
 
-        // Setup Report Button
         const reportBtn = document.getElementById('report-btn');
         if (reportBtn) {
             reportBtn.addEventListener('click', () => {
@@ -98,13 +95,11 @@ document.addEventListener("DOMContentLoaded", function() {
             });
         }
 
-        // Setup Settings Button
         const settingsBtn = document.getElementById('settings-btn');
         if(settingsBtn) {
             settingsBtn.addEventListener('click', openSettings);
         }
 
-        // Setup Search
         const searchInput = document.getElementById('search-input');
         if(searchInput) {
             let timer;
@@ -118,14 +113,12 @@ document.addEventListener("DOMContentLoaded", function() {
             });
         }
 
-        // Setup Tabs
         document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', (e) => {
             document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
             e.target.classList.add('active');
             fetchItems(e.target.dataset.tab.toUpperCase(), searchInput ? searchInput.value : '');
         }));
 
-        // Logout
         const logoutBtn = document.getElementById('logout-btn');
         if(logoutBtn) {
             logoutBtn.addEventListener('click', async () => {
@@ -189,7 +182,6 @@ document.addEventListener("DOMContentLoaded", function() {
         
         container.innerHTML = '<div style="grid-column:span 3; text-align:center;">Loading...</div>';
 
-        // 1. Fetch Items
         let query = supabase.from('items').select('*').order('created_at', { ascending: false });
 
         if (filterType !== 'ALL') {
@@ -303,11 +295,9 @@ document.addEventListener("DOMContentLoaded", function() {
 
                 let error;
                 if (editingItemId) {
-                    // UPDATE EXISTING ITEM
                     const { error: updateError } = await supabase.from('items').update(itemData).eq('id', editingItemId);
                     error = updateError;
                 } else {
-                    // INSERT NEW ITEM
                     const { error: insertError } = await supabase.from('items').insert(itemData);
                     error = insertError;
                 }
@@ -353,7 +343,6 @@ document.addEventListener("DOMContentLoaded", function() {
         document.getElementById('detail-location').innerText = item.location || "Unknown Location";
         document.getElementById('detail-desc').innerText = item.description || "No description.";
         
-        // CLICKABLE USER NAME
         const userSpan = document.getElementById('detail-user');
         if (item.profiles) {
             userSpan.innerText = item.profiles.full_name;
@@ -370,13 +359,11 @@ document.addEventListener("DOMContentLoaded", function() {
         const actionsContainer = document.querySelector('.detail-actions');
         actionsContainer.innerHTML = ''; 
 
-        // --- CHECK PERMISSIONS FOR EDIT/DELETE ---
+        // --- CHECK PERMISSIONS ---
         const userRole = (currentProfile.role || '').toUpperCase();
         const isOwner = (currentUser.id === item.user_id);
 
         if (userRole === 'ADMIN' || userRole === 'Admin' || isOwner) {
-            
-            // EDIT BUTTON
             const editBtn = document.createElement('button');
             editBtn.innerHTML = '<i class="ri-edit-line"></i> Edit Item';
             editBtn.className = 'btn-edit';
@@ -384,7 +371,6 @@ document.addEventListener("DOMContentLoaded", function() {
             editBtn.onclick = () => startEditItem(item);
             actionsContainer.appendChild(editBtn);
 
-            // DELETE BUTTON
             const deleteBtn = document.createElement('button');
             deleteBtn.innerHTML = '<i class="ri-delete-bin-line"></i> Delete Item';
             deleteBtn.style.cssText = "width:100%; margin-bottom:10px; background:#ff4757; color:white; padding:12px; border:none; border-radius:8px; font-weight:600; cursor:pointer;";
@@ -392,7 +378,6 @@ document.addEventListener("DOMContentLoaded", function() {
             actionsContainer.appendChild(deleteBtn);
         }
 
-        // SOLVE/CONTACT BUTTON
         const mainBtn = document.createElement('button');
         mainBtn.style.width = '100%';
         mainBtn.style.padding = '12px';
@@ -424,19 +409,16 @@ document.addEventListener("DOMContentLoaded", function() {
         
         closeModal('detail-modal');
         
-        // Populate Form
         document.querySelector(`input[name="type"][value="${item.type}"]`).checked = true;
         document.getElementById('item-name').value = item.title;
         document.getElementById('item-date').value = item.date_incident;
         document.getElementById('item-location').value = item.location;
         document.getElementById('item-desc').value = item.description || "";
         
-        // Update UI
         document.getElementById('report-modal-title').innerText = "Edit Item";
         document.getElementById('report-submit-btn').innerText = "Update Item";
         document.getElementById('edit-photo-note').style.display = 'block';
 
-        // Map
         selectedLat = item.latitude;
         selectedLng = item.longitude;
         
@@ -511,7 +493,6 @@ document.addEventListener("DOMContentLoaded", function() {
             btn.disabled = true;
 
             try {
-                // HANDLE PHOTO UPLOAD
                 const avatarFile = document.getElementById('set-avatar').files[0];
                 let avatarUrl = currentProfile.avatar_url;
 
@@ -580,7 +561,7 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    // --- FIX: UPDATED MESSAGE FUNCTION ---
+    // --- FIX: MESSAGING LOGIC ---
     function openMessageModal(item) {
         console.log("Opening message modal for item:", item);
         const modal = document.getElementById('message-modal');
@@ -592,7 +573,6 @@ document.addEventListener("DOMContentLoaded", function() {
             return;
         }
 
-        // Set Title context if possible
         const header = modal.querySelector('h2');
         if(header && item.profiles) {
             header.innerText = `Contact ${item.profiles.full_name.split(' ')[0]}`;
@@ -601,7 +581,6 @@ document.addEventListener("DOMContentLoaded", function() {
         openModal('message-modal');
         if(input) input.value = '';
 
-        // Clone button to strip old event listeners
         const newBtn = sendBtn.cloneNode(true); 
         sendBtn.parentNode.replaceChild(newBtn, sendBtn);
         
@@ -622,8 +601,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (!item.user_id) throw new Error("Cannot identify the uploader.");
 
                 const payload = {
-                    user_id: item.user_id,     // The recipient (Uploader)
-                    sender_id: currentUser.id, // The sender (You)
+                    user_id: item.user_id,     // MATCHES DB COLUMN 'user_id'
+                    sender_id: currentUser.id, // MATCHES DB COLUMN 'sender_id'
                     item_id: item.id,
                     message: msg,
                     type: 'MESSAGE',
@@ -632,14 +611,13 @@ document.addEventListener("DOMContentLoaded", function() {
                 
                 console.log("Sending payload:", payload);
 
-                // Insert as array to ensure proper formatting
+                // Using array format for insert is safer
                 const { data, error } = await supabase
                     .from('notifications')
                     .insert([payload])
                     .select();
 
                 if(error) {
-                    // Throw detailed error including DB hints
                     throw new Error(error.message + (error.details ? ` (${error.details})` : ""));
                 }
 
