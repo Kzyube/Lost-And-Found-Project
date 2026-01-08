@@ -61,10 +61,11 @@ document.addEventListener("DOMContentLoaded", function() {
 
         if (profile) {
             currentProfile = profile;
-            console.log("Logged in as:", currentProfile.role); // Debugging Role
+            console.log("Logged in as:", currentProfile.role);
             updateUserUI(profile);
             loadDashboard(); 
         } else {
+            // If no profile, redirect to register unless already there
             if (window.location.pathname.indexOf('register.html') === -1) {
                 window.location.href = 'register.html';
             }
@@ -370,11 +371,10 @@ document.addEventListener("DOMContentLoaded", function() {
         actionsContainer.innerHTML = ''; 
 
         // --- CHECK PERMISSIONS FOR EDIT/DELETE ---
-        // FIX: Case-insensitive check for 'ADMIN'
         const userRole = (currentProfile.role || '').toUpperCase();
         const isOwner = (currentUser.id === item.user_id);
 
-        if (userRole === 'ADMIN' || isOwner) {
+        if (userRole === 'ADMIN' || userRole === 'Admin' || isOwner) {
             
             // EDIT BUTTON
             const editBtn = document.createElement('button');
@@ -410,6 +410,7 @@ document.addEventListener("DOMContentLoaded", function() {
             mainBtn.innerHTML = '<i class="ri-chat-3-line"></i> Contact Uploader';
             mainBtn.style.backgroundColor = '#1877F2'; 
             mainBtn.style.color = 'white';
+            // pass item safely
             mainBtn.onclick = () => openMessageModal(item);
         }
         actionsContainer.appendChild(mainBtn);
@@ -492,7 +493,7 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     };
 
-    // --- 12. ACCOUNT SETTINGS (WITH PHOTO UPLOAD) ---
+    // --- 12. ACCOUNT SETTINGS ---
     window.openSettings = function() {
         document.getElementById('set-name').value = currentProfile.full_name || "";
         document.getElementById('set-mobile').value = currentProfile.mobile_number || "";
@@ -517,9 +518,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
                 if (avatarFile) {
                     const fileName = `avatar-${currentUser.id}-${Date.now()}`;
-                    // We reuse 'item-images' bucket since we know it exists. 
                     const { error: upErr } = await supabase.storage.from('item-images').upload(fileName, avatarFile);
-                    
                     if(upErr) throw upErr;
 
                     const { data } = supabase.storage.from('item-images').getPublicUrl(fileName);
@@ -530,7 +529,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     full_name: document.getElementById('set-name').value,
                     mobile_number: document.getElementById('set-mobile').value,
                     facebook_link: document.getElementById('set-fb').value,
-                    avatar_url: avatarUrl, // Update avatar
+                    avatar_url: avatarUrl,
                     updated_at: new Date()
                 };
 
@@ -538,7 +537,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
                 if(error) throw error;
 
-                // Update Local State
                 currentProfile = { ...currentProfile, ...updates };
                 updateUserUI(currentProfile);
                 window.showAlert("Success", "Profile updated!");
@@ -556,9 +554,7 @@ document.addEventListener("DOMContentLoaded", function() {
     // --- 13. ACTION FUNCTIONS ---
     async function deleteItem(itemId) {
         window.showConfirm("Are you sure you want to delete this item?", async () => {
-            // DIRECT DELETE FROM SUPABASE
             const { error } = await supabase.from('items').delete().eq('id', itemId);
-            
             if (!error) {
                 window.showAlert("Deleted", "Item removed successfully.");
                 closeModal('detail-modal');
@@ -585,30 +581,69 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
+    // --- FIX: UPDATED MESSAGE FUNCTION ---
     function openMessageModal(item) {
-        openModal('message-modal');
+        // Debug
+        console.log("Opening message modal for item:", item);
+        
+        const modal = document.getElementById('message-modal');
         const sendBtn = document.getElementById('send-msg-btn');
+        const input = document.getElementById('message-input');
+        
+        if (!modal || !sendBtn) {
+            console.error("Error: Modal or 'send-msg-btn' not found in HTML!");
+            return;
+        }
+
+        openModal('message-modal');
+        
+        // Clear previous input
+        if(input) input.value = '';
+
+        // Clone button to strip old event listeners
         const newBtn = sendBtn.cloneNode(true); 
         sendBtn.parentNode.replaceChild(newBtn, sendBtn);
         
-        newBtn.addEventListener('click', async () => {
-            const msg = document.getElementById('message-input').value;
-            if(!msg) return;
-            
-            const { error } = await supabase.from('notifications').insert({
-                user_id: item.user_id,
-                sender_id: currentUser.id,
-                item_id: item.id,
-                message: msg,
-                type: 'MESSAGE',
-                is_read: false
-            });
+        newBtn.addEventListener('click', async (e) => {
+            e.preventDefault(); // Prevent form submission if strictly inside a form tag
 
-            if(!error) {
-                window.showAlert("Sent", "Message sent!");
+            const msg = input ? input.value.trim() : "";
+            if(!msg) {
+                alert("Please enter a message.");
+                return;
+            }
+
+            const oldText = newBtn.innerText;
+            newBtn.innerText = "Sending...";
+            newBtn.disabled = true;
+            
+            try {
+                if (!currentUser) throw new Error("You must be logged in.");
+                if (!item.user_id) throw new Error("Cannot identify the uploader.");
+
+                const payload = {
+                    user_id: item.user_id,     // The recipient
+                    sender_id: currentUser.id, // The sender (you)
+                    item_id: item.id,
+                    message: msg,
+                    type: 'MESSAGE',
+                    is_read: false
+                };
+                
+                console.log("Sending payload:", payload);
+
+                const { error } = await supabase.from('notifications').insert(payload);
+
+                if(error) throw error;
+
+                window.showAlert("Sent", "Message sent successfully!");
                 closeModal('message-modal');
-            } else {
-                window.showAlert("Error", error.message);
+            } catch (err) {
+                console.error("Message Send Error:", err);
+                window.showAlert("Error", "Failed to send: " + err.message);
+            } finally {
+                newBtn.innerText = oldText;
+                newBtn.disabled = false;
             }
         });
     }
@@ -710,14 +745,19 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     };
     
-    // HELPER FUNCTIONS FOR MODALS & SCROLL LOCK
     window.openModal = function(id) {
-        document.getElementById(id).classList.add('active');
-        document.body.classList.add('modal-open'); // Freeze background
+        const el = document.getElementById(id);
+        if(el) {
+            el.classList.add('active');
+            document.body.classList.add('modal-open'); 
+        }
     }
 
     window.closeModal = function(id) {
-        document.getElementById(id).classList.remove('active');
-        document.body.classList.remove('modal-open'); // Unfreeze background
+        const el = document.getElementById(id);
+        if(el) {
+            el.classList.remove('active');
+            document.body.classList.remove('modal-open');
+        }
     };
 });
