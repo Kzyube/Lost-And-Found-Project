@@ -12,6 +12,102 @@
 
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        /* --- LAYOUT FIXES (SIDE BY SIDE) --- */
+
+        /* 1. LOCK BODY SCROLL WHEN MODAL IS OPEN */
+        body.modal-open { overflow: hidden !important; }
+
+        /* 2. DETAIL MODAL CONTAINER (SIDE BY SIDE) */
+        .detail-box {
+            display: flex; 
+            flex-direction: row !important; /* Forces Side-by-Side */
+            width: 900px;
+            max-width: 95vw;
+            height: 600px; /* Fixed Height */
+            max-height: 90vh;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* LEFT SIDE: IMAGE (50% Width) */
+        .detail-img-box {
+            width: 50%;
+            height: 100%;
+            background: #000000; /* Black background acts as a frame */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        #detail-img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* FIX: Ensures full image is visible, not stretched or cropped */
+            display: block;
+        }
+
+        /* RIGHT SIDE: INFO (50% Width + Scrollable) */
+        .detail-info {
+            width: 50%;
+            padding: 30px;
+            overflow-y: auto; /* Only this part scrolls */
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* MAP FIX INSIDE MODAL */
+        .map-style {
+            height: 200px !important;
+            width: 100%;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            margin-top: 5px;
+        }
+
+        /* BLUE CLICKABLE NAME */
+        .clickable-user {
+            color: #1877F2 !important;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .clickable-user:hover { text-decoration: underline; }
+
+        /* AVATAR PREVIEW IN SETTINGS */
+        .settings-avatar-preview {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #1877F2;
+            margin: 0 auto 10px auto;
+            display: block;
+        }
+
+        /* MOBILE RESPONSIVE (Stack vertically on phone) */
+        @media (max-width: 768px) {
+            .detail-box {
+                flex-direction: column !important;
+                height: 90vh;
+                width: 95%;
+            }
+            .detail-img-box {
+                width: 100%;
+                height: 300px; /* Taller image area on mobile */
+                flex-shrink: 0;
+            }
+            .detail-info {
+                width: 100%;
+                height: auto;
+                padding: 20px;
+            }
+        }
+    </style>
 </head>
 <body class="dashboard-body">
 
@@ -36,7 +132,8 @@
                     <small id="nav-role">...</small>
                 </div>
                 <div class="footer-actions">
-                    <button id="logout-btn"><i class="ri-logout-box-r-line"></i></button>
+                    <button id="settings-btn" title="Settings"><i class="ri-settings-3-line"></i></button>
+                    <button id="logout-btn" title="Logout"><i class="ri-logout-box-r-line"></i></button>
                 </div>
             </div>
         </nav>
@@ -92,7 +189,7 @@
     <div class="modal-overlay" id="report-modal">
         <div class="modal-box">
             <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                <h2>Report an Item</h2>
+                <h2 id="report-modal-title">Report an Item</h2>
                 <button class="close-btn" onclick="closeModal('report-modal')"><i class="ri-close-line"></i></button>
             </div>
             
@@ -135,9 +232,10 @@
                     <div class="form-group full">
                         <label>Photo</label>
                         <input type="file" id="item-photo" accept="image/*">
+                        <small id="edit-photo-note" style="display:none; color:orange;">Leave empty to keep current photo.</small>
                     </div>
                 </div>
-                <button type="submit" class="btn-submit">Post Item</button>
+                <button type="submit" class="btn-submit" id="report-submit-btn">Post Item</button>
             </form>
         </div>
     </div>
@@ -145,36 +243,81 @@
     <div class="modal-overlay" id="detail-modal">
         <button class="close-btn-abs" onclick="closeModal('detail-modal')"><i class="ri-close-line"></i></button>
         <div class="detail-box">
+            
             <div class="detail-img-box">
                 <img id="detail-img" src="">
             </div>
+
             <div class="detail-info">
                 <div>
                     <span id="detail-type" class="detail-type">LOST</span>
-                    <h2 id="detail-title" class="detail-h2">Item Name</h2>
+                    <h2 id="detail-title" class="detail-h2" style="margin: 10px 0;">Item Name</h2>
                     
                     <div class="detail-meta">
                         <span><i class="ri-calendar-line"></i> <span id="detail-date"></span></span>
                         <span><i class="ri-map-pin-line"></i> <span id="detail-location"></span></span>
-                        <span><i class="ri-user-3-line"></i> Posted by <span id="detail-user"></span></span>
+                        <span><i class="ri-user-3-line"></i> Posted by <span id="detail-user" class="clickable-user"></span></span>
                     </div>
 
-                    <div style="margin-bottom: 20px;">
-                        <label style="font-weight:600; font-size:0.85rem; display:block; margin-bottom:5px;">📍 Map Location</label>
+                    <div style="margin-top: 15px;">
+                        <label style="font-weight:600; font-size:0.85rem; display:block;">📍 Map Location</label>
                         <div id="map-viewer" class="map-style"></div>
                     </div>
 
-                    <div id="detail-desc" class="detail-desc">
+                    <div id="detail-desc" class="detail-desc" style="margin-top:15px; color:#555; line-height:1.5;">
                         Description here...
                     </div>
                 </div>
 
-                <div class="detail-actions">
-                    <button class="btn-facebook" id="contact-btn">
-                        <i class="ri-chat-3-line"></i> Contact Uploader
-                    </button>
-                </div>
+                <div class="detail-actions" style="margin-top:auto;">
+                    </div>
             </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="profile-view-modal">
+        <div class="modal-box center-text" style="max-width: 350px;">
+            <button class="close-btn-abs" onclick="closeModal('profile-view-modal')"><i class="ri-close-line"></i></button>
+            <div style="margin-bottom:15px;">
+                <img id="view-avatar" src="https://via.placeholder.com/100" style="width:100px; height:100px; border-radius:50%; object-fit:cover; border:3px solid #eee;">
+            </div>
+            <h2 id="view-name">User Name</h2>
+            <p id="view-role" class="tag" style="display:inline-block; margin-top:5px;">STUDENT</p>
+            
+            <div style="text-align:left; margin-top:25px; background:#f9f9f9; padding:15px; border-radius:10px;">
+                <p style="margin-bottom:10px;"><i class="ri-phone-line"></i> <span id="view-mobile" style="font-weight:500;">N/A</span></p>
+                <p><i class="ri-facebook-circle-fill"></i> <a id="view-fb" href="#" target="_blank" style="color:#1877F2; text-decoration:none;">No Facebook Link</a></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal-box" style="max-width:400px;">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:20px;">
+                <h2>Account Settings</h2>
+                <button class="close-btn" onclick="closeModal('settings-modal')"><i class="ri-close-line"></i></button>
+            </div>
+            <form id="settings-form">
+                <div class="form-group" style="text-align:center;">
+                    <img id="set-avatar-preview" class="settings-avatar-preview" src="https://via.placeholder.com/100">
+                    <label for="set-avatar" style="color:#1877F2; cursor:pointer; font-weight:600; font-size:0.9rem;">Change Photo</label>
+                    <input type="file" id="set-avatar" accept="image/*" style="display:none;" onchange="document.getElementById('set-avatar-preview').src = window.URL.createObjectURL(this.files[0])">
+                </div>
+
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" id="set-name" required>
+                </div>
+                <div class="form-group">
+                    <label>Mobile Number</label>
+                    <input type="text" id="set-mobile" placeholder="0912 345 6789">
+                </div>
+                <div class="form-group">
+                    <label>Facebook Profile Link</label>
+                    <input type="url" id="set-fb" placeholder="https://facebook.com/your.username">
+                </div>
+                <button type="submit" class="btn-submit">Save Changes</button>
+            </form>
         </div>
     </div>
 
@@ -185,7 +328,7 @@
                 <button class="close-btn" onclick="closeModal('notif-modal')"><i class="ri-close-line"></i></button>
             </div>
             <div class="notif-list" id="notif-list">
-                </div>
+            </div>
         </div>
     </div>
 
