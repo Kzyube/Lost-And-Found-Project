@@ -410,7 +410,6 @@ document.addEventListener("DOMContentLoaded", function() {
             mainBtn.innerHTML = '<i class="ri-chat-3-line"></i> Contact Uploader';
             mainBtn.style.backgroundColor = '#1877F2'; 
             mainBtn.style.color = 'white';
-            // pass item safely
             mainBtn.onclick = () => openMessageModal(item);
         }
         actionsContainer.appendChild(mainBtn);
@@ -583,21 +582,23 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // --- FIX: UPDATED MESSAGE FUNCTION ---
     function openMessageModal(item) {
-        // Debug
         console.log("Opening message modal for item:", item);
-        
         const modal = document.getElementById('message-modal');
         const sendBtn = document.getElementById('send-msg-btn');
         const input = document.getElementById('message-input');
         
         if (!modal || !sendBtn) {
-            console.error("Error: Modal or 'send-msg-btn' not found in HTML!");
+            console.error("Missing modal elements");
             return;
         }
 
+        // Set Title context if possible
+        const header = modal.querySelector('h2');
+        if(header && item.profiles) {
+            header.innerText = `Contact ${item.profiles.full_name.split(' ')[0]}`;
+        }
+
         openModal('message-modal');
-        
-        // Clear previous input
         if(input) input.value = '';
 
         // Clone button to strip old event listeners
@@ -605,8 +606,7 @@ document.addEventListener("DOMContentLoaded", function() {
         sendBtn.parentNode.replaceChild(newBtn, sendBtn);
         
         newBtn.addEventListener('click', async (e) => {
-            e.preventDefault(); // Prevent form submission if strictly inside a form tag
-
+            e.preventDefault(); 
             const msg = input ? input.value.trim() : "";
             if(!msg) {
                 alert("Please enter a message.");
@@ -622,8 +622,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (!item.user_id) throw new Error("Cannot identify the uploader.");
 
                 const payload = {
-                    user_id: item.user_id,     // The recipient
-                    sender_id: currentUser.id, // The sender (you)
+                    user_id: item.user_id,     // The recipient (Uploader)
+                    sender_id: currentUser.id, // The sender (You)
                     item_id: item.id,
                     message: msg,
                     type: 'MESSAGE',
@@ -632,9 +632,16 @@ document.addEventListener("DOMContentLoaded", function() {
                 
                 console.log("Sending payload:", payload);
 
-                const { error } = await supabase.from('notifications').insert(payload);
+                // Insert as array to ensure proper formatting
+                const { data, error } = await supabase
+                    .from('notifications')
+                    .insert([payload])
+                    .select();
 
-                if(error) throw error;
+                if(error) {
+                    // Throw detailed error including DB hints
+                    throw new Error(error.message + (error.details ? ` (${error.details})` : ""));
+                }
 
                 window.showAlert("Sent", "Message sent successfully!");
                 closeModal('message-modal');
