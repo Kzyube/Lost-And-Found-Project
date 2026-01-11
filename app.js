@@ -64,6 +64,7 @@ document.addEventListener("DOMContentLoaded", function() {
             updateUserUI(profile);
             loadDashboard(); 
         } else {
+            // Redirect to register if no profile found
             if (window.location.pathname.indexOf('register.html') === -1) {
                 window.location.href = 'register.html';
             }
@@ -182,7 +183,11 @@ document.addEventListener("DOMContentLoaded", function() {
         
         container.innerHTML = '<div style="grid-column:span 3; text-align:center;">Loading...</div>';
 
-        let query = supabase.from('items').select('*').order('created_at', { ascending: false });
+        // FIX: EXCLUDE SOLVED ITEMS
+        let query = supabase.from('items')
+            .select('*')
+            .neq('status', 'SOLVED') // This line hides solved items
+            .order('created_at', { ascending: false });
 
         if (filterType !== 'ALL') {
             query = query.eq('type', filterType);
@@ -261,13 +266,15 @@ document.addEventListener("DOMContentLoaded", function() {
             btn.disabled = true;
 
             try {
-                const file = document.getElementById('item-photo').files[0];
+                const fileInput = document.getElementById('item-photo');
                 let imageUrl = editingItemUrl; 
 
-                if (file) {
-                    const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '')}`; 
+                // FIX: COMPRESS IMAGE
+                if (fileInput.files.length > 0) {
+                    const compressedFile = await compressImage(fileInput.files[0]);
+                    const fileName = `${Date.now()}-${compressedFile.name || 'image.jpg'}`; 
                     
-                    const { error: upErr } = await supabase.storage.from('item-images').upload(fileName, file);
+                    const { error: upErr } = await supabase.storage.from('item-images').upload(fileName, compressedFile);
                     
                     if (upErr) {
                         if (upErr.message.includes("Bucket not found")) {
@@ -493,12 +500,14 @@ document.addEventListener("DOMContentLoaded", function() {
             btn.disabled = true;
 
             try {
-                const avatarFile = document.getElementById('set-avatar').files[0];
+                // FIX: COMPRESS IMAGE
+                const fileInput = document.getElementById('set-avatar');
                 let avatarUrl = currentProfile.avatar_url;
 
-                if (avatarFile) {
+                if (fileInput.files.length > 0) {
+                    const compressedFile = await compressImage(fileInput.files[0]);
                     const fileName = `avatar-${currentUser.id}-${Date.now()}`;
-                    const { error: upErr } = await supabase.storage.from('item-images').upload(fileName, avatarFile);
+                    const { error: upErr } = await supabase.storage.from('item-images').upload(fileName, compressedFile);
                     if(upErr) throw upErr;
 
                     const { data } = supabase.storage.from('item-images').getPublicUrl(fileName);
@@ -553,7 +562,7 @@ document.addEventListener("DOMContentLoaded", function() {
             if (!error) {
                 window.showAlert("Success", "Item marked as solved!");
                 closeModal('detail-modal');
-                fetchItems();
+                fetchItems(); // This will auto-hide it because of the .neq('SOLVED') in fetchItems
                 updateStats();
             } else {
                 window.showAlert("Error", error.message);
@@ -601,8 +610,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (!item.user_id) throw new Error("Cannot identify the uploader.");
 
                 const payload = {
-                    user_id: item.user_id,     // MATCHES DB COLUMN 'user_id' (Receiver)
-                    sender_id: currentUser.id, // MATCHES DB COLUMN 'sender_id' (Sender)
+                    user_id: item.user_id,     // MATCHES DB COLUMN 'user_id'
+                    sender_id: currentUser.id, // MATCHES DB COLUMN 'sender_id'
                     item_id: item.id,
                     message: msg,
                     type: 'MESSAGE',
@@ -611,7 +620,6 @@ document.addEventListener("DOMContentLoaded", function() {
                 
                 console.log("Sending payload:", payload);
 
-                // Using array format for insert is safer
                 const { data, error } = await supabase
                     .from('notifications')
                     .insert([payload])
@@ -745,4 +753,41 @@ document.addEventListener("DOMContentLoaded", function() {
             document.body.classList.remove('modal-open');
         }
     };
+
+    // --- NEW IMAGE COMPRESSION FUNCTION ---
+    async function compressImage(file, { quality = 0.7, maxWidth = 1024 } = {}) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxWidth) {
+                        height *= maxWidth / width;
+                        width = maxWidth;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    canvas.toBlob((blob) => {
+                        const compressedFile = new File([blob], file.name, {
+                            type: 'image/jpeg',
+                            lastModified: Date.now(),
+                        });
+                        resolve(compressedFile);
+                    }, 'image/jpeg', quality);
+                };
+                img.onerror = (err) => reject(err);
+            };
+            reader.onerror = (err) => reject(err);
+        });
+    }
 });
