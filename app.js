@@ -64,7 +64,6 @@ document.addEventListener("DOMContentLoaded", function() {
             updateUserUI(profile);
             loadDashboard(); 
         } else {
-            // Redirect to register if no profile found
             if (window.location.pathname.indexOf('register.html') === -1) {
                 window.location.href = 'register.html';
             }
@@ -602,8 +601,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (!item.user_id) throw new Error("Cannot identify the uploader.");
 
                 const payload = {
-                    user_id: item.user_id,     // MATCHES DB COLUMN 'user_id'
-                    sender_id: currentUser.id, // MATCHES DB COLUMN 'sender_id'
+                    user_id: item.user_id,     // MATCHES DB COLUMN 'user_id' (Receiver)
+                    sender_id: currentUser.id, // MATCHES DB COLUMN 'sender_id' (Sender)
                     item_id: item.id,
                     message: msg,
                     type: 'MESSAGE',
